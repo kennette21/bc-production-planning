@@ -6,6 +6,7 @@ import json
 import copy
 import random
 from modules.farm import Farm, Batch
+from modules.bigquery_util import current_data
 
 # Helper functions to initialize default parameters
 def default_production_order():
@@ -90,24 +91,47 @@ forecast_days = st.sidebar.number_input("Forecast Days", min_value=1, max_value=
 # Initialize batches (mock or fetch from data source)
 st.sidebar.header("🚀 Initialization")
 use_mock_data = st.sidebar.checkbox("Use Mock Data", value=True)
-use_live_data = st.sidebar.checkbox("Use Live Farm Data (WIP)", value=False, disabled=True)
+use_bigquery = st.sidebar.checkbox("Use Live Farm Data (WIP)", value=False, disabled=True)
+# Radio button for selecting data source
+data_source = st.sidebar.radio(
+    "Choose Data Source",
+    options=["Use Mock Data", "Fetch from BigQuery"],
+    index=0,
+    help="Select whether to use mock data for demonstration or fetch live data from BigQuery."
+)
 
-if use_mock_data:
-    st.sidebar.write("Generating mock data for demonstration purposes.")
+# Conditional logic for data source selection
+if data_source == "Fetch from BigQuery":
+    st.sidebar.write("Fetching data from BigQuery...")
+    try:
+        df_current = current_data()  # Fetch data from BigQuery
+        batches_list = []
+        for _, row in df_current.iterrows():
+            batch = Batch(
+                batch_id=row["BatchID"],
+                species=row["Species"],
+                quantity=row["CurrentQuantity"],
+                stage=row["Alteration"],
+                start_date=(date.today() - pd.to_datetime(row["StartDate"]).date()).days,
+            )
+            batches_list.append(batch)
+        st.sidebar.success("Data fetched successfully!")
+    except Exception as e:
+        st.sidebar.error(f"Error fetching data: {e}")
+        batches_list = []  # Fallback to empty list
+else:
+    st.sidebar.write("Using mock data for demonstration.")
     batches_list = []
     for i in range(5):
-        species = random.choice(list(production_order.keys()))
+        species = random.choice(list(default_production_order().keys()))
         batch = Batch(
             batch_id=f"TEST-{i}",
             species=species,
-            quantity=farm_config["MAX_BATCH_QUANTITY"],
+            quantity=100,
             stage="BS",
             start_date=0,
         )
         batches_list.append(batch)
-else:
-    st.sidebar.write("Add your data fetching logic here.")
-    batches_list = []  # Replace with fetched batches
 
 # Display Configuration and Initialization
 st.subheader("Current Configuration")
@@ -136,6 +160,7 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
 
 if st.button("🚀 Run Forecast and Planning"):
     # Initialize farm

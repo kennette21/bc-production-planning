@@ -1,3 +1,4 @@
 streamlit
 pandas             # For data manipulation
 matplotlib         # For plotting
+google-cloud-bigquery
