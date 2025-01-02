@@ -1,7 +1,15 @@
 from google.cloud import bigquery
+import streamlit as st
+from google.oauth2 import service_account
 import pandas as pd
 from modules.farm import Batch
 from datetime import date
+
+# Create API client.
+credentials = service_account.Credentials.from_service_account_info(
+    st.secrets["gcp_service_account"]
+)
+client = bigquery.Client(credentials=credentials)
 
 # Default values for Batch initialization (align with your app's config)
 DEFAULT_BS_QUANTITY = 100
@@ -68,7 +76,6 @@ def execute_query(query: str) -> pd.DataFrame:
     """
     Execute a given SQL query and return the result as a Pandas DataFrame.
     """
-    client = bigquery.Client()
     query_job = client.query(query)  # API request
     results = query_job.result()  # Waits for query to finish
     return results.to_dataframe()
