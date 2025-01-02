@@ -93,33 +93,61 @@ class Farm:
         totals_zero_species = {spec: totals_zero.copy() for spec in self.species_set}
 
         for day in range(days):
+            cur_inventory = {}  # Track batch-specific details
             cur_totals = copy.deepcopy(totals_zero)
             cur_totals_species = copy.deepcopy(totals_zero_species)
             forecast_changes = copy.deepcopy(totals_zero)
             forecast_changes_species = copy.deepcopy(totals_zero_species)
             stage_capacity_remaining = self.stage_capacities.copy()
 
+            # Simulate transitions for each batch
             for batch in self.inventory:
-                if batch.is_ready_to_transition(day) and self.check_capacity(stage_capacity_remaining, batch):
+                is_ready = batch.is_ready_to_transition(day)
+                stage_capacity_exists = self.check_capacity(stage_capacity_remaining, batch)
+
+                if is_ready and stage_capacity_exists:
                     batch.change_stage(day)
                     stage_capacity_remaining[batch.stage] -= batch.quantity
                     forecast_changes[batch.stage] += batch.quantity
                     forecast_changes_species[batch.species][batch.stage] += batch.quantity
 
+                # Simulate mortality
+                batch.simulate_mortality()
+
+                # Update current inventory and totals
+                cur_inventory[batch.batch_id] = {
+                    "species": batch.species,
+                    "stage": batch.stage,
+                    "quantity": batch.quantity,
+                }
                 cur_totals[batch.stage] += batch.quantity
                 cur_totals_species[batch.species][batch.stage] += batch.quantity
 
+            # Calculate shortfall and available capacity
             cur_totals["SF"] = desired_output - cur_totals["OP"]
             for species in self.species_set:
                 if species in production_order:
-                    cur_totals_species[species]["SF"] = production_order[species] - cur_totals_species[species]["OP"]
+                    cur_totals_species[species]["SF"] = (
+                        production_order[species] - cur_totals_species[species]["OP"]
+                    )
 
-            cur_avail_capacity = self.capacity - cur_totals["BS"] - cur_totals["MF"] - cur_totals["FS"]
+            cur_avail_capacity = (
+                self.capacity - cur_totals["BS"] - cur_totals["MF"] - cur_totals["FS"]
+            )
 
-            rolling_inventory.append(cur_totals)
+            # Add current totals to rolling lists
+            rolling_inventory.append(cur_inventory)
             rolling_totals.append({"overall": cur_totals, "species": cur_totals_species})
             rolling_changes.append({"overall": forecast_changes, "species": forecast_changes_species})
             rolling_capacity.append({"overall": cur_avail_capacity, "stage": stage_capacity_remaining})
+
+            # Debugging Logs (optional)
+            print(f"Day: {day}")
+            print("Current Totals:", cur_totals)
+            print("Current Totals by Species:", cur_totals_species)
+            print("Overall Capacity Remaining:", cur_avail_capacity)
+            print("Stage Capacity Remaining:", stage_capacity_remaining)
+            print("")
 
         return rolling_inventory, rolling_totals, rolling_changes, rolling_capacity
 
