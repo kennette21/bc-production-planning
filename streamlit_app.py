@@ -26,12 +26,39 @@ def default_farm_config():
         "FS_MORTALITY_STD": 0.05,
     }
 
+
+# Highlight instructions using markdown
+st.sidebar.markdown(
+    """
+    <style>
+    .important {
+        background-color: #FFFACD;
+        color: #000;
+        font-weight: bold;
+        padding: 10px;
+        border-radius: 5px;
+    }
+    </style>
+    <div class="important">
+    ⚠️ Remember: Updating these values will change the forecast and plan!
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
 # Streamlit app layout
 st.title("Coral Production Planning App")
 
 # Configuration Section
-st.sidebar.header("Configuration")
+st.sidebar.title("🔧 Configuration")
+st.sidebar.markdown(
+    """
+    **Customize the production parameters here.**
+    Adjust the values to see how they affect the forecast and production plan!
+    """
+)
 # Production Order Input
+st.sidebar.header("📋 Production Order")
 production_order_input = st.sidebar.text_area(
     "Production Order (JSON)",
     value=json.dumps(default_production_order(), indent=4),
@@ -44,6 +71,7 @@ except json.JSONDecodeError:
     production_order = default_production_order()
 
 # Farm Configuration Input
+st.sidebar.header("🏗️ Farm Configuration")
 farm_config_input = st.sidebar.text_area(
     "Farm Configuration (JSON)",
     value=json.dumps(default_farm_config(), indent=4),
@@ -56,11 +84,13 @@ except json.JSONDecodeError:
     farm_config = default_farm_config()
 
 # Forecast Days
+st.sidebar.header("📆 Forecast Settings")
 forecast_days = st.sidebar.number_input("Forecast Days", min_value=1, max_value=365, value=365)
 
 # Initialize batches (mock or fetch from data source)
-st.sidebar.header("Initialization")
+st.sidebar.header("🚀 Initialization")
 use_mock_data = st.sidebar.checkbox("Use Mock Data", value=True)
+use_live_data = st.sidebar.checkbox("Use Live Farm Data (WIP)", value=False, disabled=True)
 
 if use_mock_data:
     st.sidebar.write("Generating mock data for demonstration purposes.")
@@ -86,7 +116,28 @@ st.json(farm_config)
 
 # Forecasting and Planning Section
 st.header("Run Forecast and Production Planning")
-if st.button("Run"):
+# Add Prominent RUN Button
+st.markdown(
+    """
+    <style>
+    div.stButton > button {
+        width: 100%;
+        padding: 15px;
+        font-size: 18px;
+        background-color: #4CAF50;
+        color: white;
+        font-weight: bold;
+        border-radius: 8px;
+    }
+    div.stButton > button:hover {
+        background-color: #45a049;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+if st.button("🚀 Run Forecast and Planning"):
     # Initialize farm
     my_farm = Farm(
         inventory=batches_list,
