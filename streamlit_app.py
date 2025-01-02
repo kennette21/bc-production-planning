@@ -6,7 +6,7 @@ import json
 import copy
 import random
 from modules.farm import Farm, Batch
-from modules.bigquery_util import current_data
+from modules.bigquery_util import current_data, row_to_batch
 
 # Helper functions to initialize default parameters
 def default_production_order():
@@ -90,8 +90,6 @@ forecast_days = st.sidebar.number_input("Forecast Days", min_value=1, max_value=
 
 # Initialize batches (mock or fetch from data source)
 st.sidebar.header("🚀 Initialization")
-use_mock_data = st.sidebar.checkbox("Use Mock Data", value=True)
-use_bigquery = st.sidebar.checkbox("Use Live Farm Data (WIP)", value=False, disabled=True)
 # Radio button for selecting data source
 data_source = st.sidebar.radio(
     "Choose Data Source",
@@ -105,17 +103,8 @@ if data_source == "Fetch from BigQuery":
     st.sidebar.write("Fetching data from BigQuery...")
     try:
         df_current = current_data()  # Fetch data from BigQuery
-        batches_list = []
-        for _, row in df_current.iterrows():
-            batch = Batch(
-                batch_id=row["BatchID"],
-                species=row["Species"],
-                quantity=row["CurrentQuantity"],
-                stage=row["Alteration"],
-                start_date=(date.today() - pd.to_datetime(row["StartDate"]).date()).days,
-            )
-            batches_list.append(batch)
-        st.sidebar.success("Data fetched successfully!")
+        batches_list = [row_to_batch(row) for _, row in df_current.iterrows()]
+        st.sidebar.success("Data fetched and processed successfully!")
     except Exception as e:
         st.sidebar.error(f"Error fetching data: {e}")
         batches_list = []  # Fallback to empty list
