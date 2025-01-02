@@ -132,18 +132,98 @@ class Farm:
         shortfall = sum(species_shortfall.values())
 
         for day in range(days):
-            stage_capacity_remaining = forecasted_capacity[day]["stage"]
-            farm_capacity_remaining = forecasted_capacity[day]["overall"]
+            cur_inventory = {}
 
-            while shortfall > 0 and stage_capacity_remaining["BS"] > 0 and farm_capacity_remaining > 0:
-                quantity_ceiling = min(shortfall, stage_capacity_remaining["BS"], farm_capacity_remaining)
+            # Calculate the capacity remaining for the day
+            if day == 0:
+                farm_capacity_remaining = forecasted_capacity[0]["overall"]
+            else:
+                farm_capacity_remaining = (
+                    forecasted_capacity[day]["overall"]
+                    - hypothetical_totals["BS"]
+                    - hypothetical_totals["MF"]
+                    - hypothetical_totals["FS"]
+                )
+
+            # Initialize blank values for the day
+            blank_totals = {"BS": 0, "MF": 0, "FS": 0, "OP": 0}
+            hypothetical_changes = blank_totals.copy()
+            hypothetical_changes_species = {
+                spec: blank_totals.copy() for spec in self.species_set
+            }
+            hypothetical_totals = blank_totals.copy()
+            hypothetical_totals_species = {
+                spec: blank_totals.copy() for spec in self.species_set
+            }
+            stage_capacity_remaining = forecasted_capacity[day]["stage"]
+
+            # Try to add batches today if there is a shortfall and capacity
+            while (
+                shortfall > 0
+                and stage_capacity_remaining["BS"] > 0
+                and farm_capacity_remaining > 0
+            ):
+                # Decide the quantity and species
+                quantity_ceiling = min(
+                    shortfall, stage_capacity_remaining["BS"], farm_capacity_remaining
+                )
                 new_species = self.choose_species(species_shortfall)
+
+                # Create new batch
                 new_batch = self.create_batch(day, new_species, quantity_ceiling)
                 hypothetical_inventory.append(new_batch)
 
+                # Reduce capacity and shortfall
                 stage_capacity_remaining["BS"] -= new_batch.quantity
                 farm_capacity_remaining -= new_batch.quantity
                 shortfall -= new_batch.quantity
                 species_shortfall[new_batch.species] -= new_batch.quantity
 
-        return hypothetical_inventory, hypothetical_rolling_totals, hypothetical_rolling_changes, hypothetical_rolling_capacity
+                # Add to Additions
+                hypothetical_changes[new_batch.stage] += new_batch.quantity
+                hypothetical_changes_species[new_batch.species][
+                    new_batch.stage
+                ] += new_batch.quantity
+
+            # Simulate quantity and transition to the next day for each batch
+            for batch in hypothetical_inventory:
+                is_ready = batch.is_ready_to_transition(day)
+                stage_capacity_exists = self.check_capacity(stage_capacity_remaining, batch)
+
+                # Transition batch if ready and capacity exists
+                if is_ready and stage_capacity_exists:
+                    batch.change_stage(day)
+
+                    stage_capacity_remaining[batch.stage] -= batch.quantity
+                    hypothetical_changes[batch.stage] += batch.quantity
+                    hypothetical_changes_species[batch.species][batch.stage] += batch.quantity
+
+                batch.simulate_mortality()
+
+                cur_inventory[batch.batch_id] = {
+                    "stage": batch.stage,
+                    "quantity": batch.quantity,
+                }
+
+                # Generate daily total
+                hypothetical_totals[batch.stage] += batch.quantity
+                hypothetical_totals_species[batch.species][batch.stage] += batch.quantity
+
+            # Save the daily inventory, totals, changes, and capacity
+            hypothetical_rolling_inventory.append(cur_inventory)
+            hypothetical_rolling_totals.append(
+                {"overall": hypothetical_totals, "species": hypothetical_totals_species}
+            )
+            hypothetical_rolling_capacity.append(
+                {"overall": farm_capacity_remaining, "stage": stage_capacity_remaining}
+            )
+            hypothetical_rolling_changes.append(
+                {"overall": hypothetical_changes, "species": hypothetical_changes_species}
+            )
+
+        return (
+            hypothetical_rolling_inventory,
+            hypothetical_rolling_totals,
+            hypothetical_rolling_changes,
+            hypothetical_rolling_capacity,
+        )

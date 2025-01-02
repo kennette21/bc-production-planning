@@ -108,7 +108,11 @@ if st.button("Run"):
 
     # Hypothetical Planning
     st.subheader("Production Plan")
-    final_shortfall_species = {spec: forecast_result[1][-1]["species"][spec]["SF"] for spec in production_order.keys()}
+    # Ensure species shortfall keys exist even if not present in the forecast result
+    final_shortfall_species = {
+        spec: forecast_result[1][-1]["species"].get(spec, {}).get("SF", 0)  # Default to 0 if missing
+        for spec in production_order.keys()
+    }
     hypothetical_result = my_farm.plan_future(forecast_days, final_shortfall_species, forecast_result[3])
     hypothetical_totals = pd.DataFrame([total['overall'] for total in hypothetical_result[1]])
     hypothetical_totals["Day"] = hypothetical_totals.index
@@ -122,4 +126,4 @@ if st.button("Run"):
     st.bar_chart(weekly_additions[["BS", "MF", "FS", "OP"]])
 
 # Footer
-st.write("Developed by Coral Restoration Team.")
+st.write("Developed by BrainCoral Dev Team.")
