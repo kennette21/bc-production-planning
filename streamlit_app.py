@@ -7,9 +7,6 @@ import copy
 import random
 from modules.farm import Farm, Batch
 
-# Placeholder classes and functions from your notebook
-# Include Batch, Farm, create_species_df, plot_farm_totals, plot_additions_stacked, etc.
-
 # Helper functions to initialize default parameters
 def default_production_order():
     return {'PAST': 7000, 'APAL': 6000, 'APRO': 6000, 'PCLI': 3000, 'ACER': 5000}
@@ -87,7 +84,7 @@ st.subheader("Current Configuration")
 st.json(production_order)
 st.json(farm_config)
 
-# Forecasting and Planning
+# Forecasting and Planning Section
 st.header("Run Forecast and Production Planning")
 if st.button("Run"):
     # Initialize farm
@@ -101,29 +98,135 @@ if st.button("Run"):
 
     # Run forecast
     st.subheader("Forecast Results")
-    forecast_result = my_farm.forecast(days=forecast_days, production_order=production_order, desired_output=sum(production_order.values()))
+    forecast_result = my_farm.forecast(
+        days=forecast_days,
+        production_order=production_order,
+        desired_output=sum(production_order.values())
+    )
+    # Prepare data for overall totals
     forecasted_totals = pd.DataFrame([total['overall'] for total in forecast_result[1]])
     forecasted_totals["Day"] = forecasted_totals.index
-    st.line_chart(forecasted_totals[["Day", "BS", "MF", "FS", "OP"]].set_index("Day"))
+
+    # Display overall forecast
+    st.line_chart(
+        forecasted_totals.set_index("Day")[["BS", "MF", "FS", "OP"]],
+        use_container_width=True,
+        height=300
+    )
 
     # Hypothetical Planning
     st.subheader("Production Plan")
-    # Ensure species shortfall keys exist even if not present in the forecast result
     final_shortfall_species = {
-        spec: forecast_result[1][-1]["species"].get(spec, {}).get("SF", 0)  # Default to 0 if missing
+        spec: forecast_result[1][-1]["species"].get(spec, {}).get("SF", 0)
         for spec in production_order.keys()
     }
-    hypothetical_result = my_farm.plan_future(forecast_days, final_shortfall_species, forecast_result[3])
-    hypothetical_totals = pd.DataFrame([total['overall'] for total in hypothetical_result[1]])
-    hypothetical_totals["Day"] = hypothetical_totals.index
-    st.line_chart(hypothetical_totals[["Day", "BS", "MF", "FS", "OP"]].set_index("Day"))
+    hypothetical_result = my_farm.plan_future(
+        forecast_days, final_shortfall_species, forecast_result[3]
+    )
 
-    # Visualization
-    st.subheader("Weekly Production Changes")
-    additions = pd.DataFrame([total['overall'] for total in hypothetical_result[2]])
-    additions["Week"] = additions.index // 7
-    weekly_additions = additions.groupby("Week").sum()
-    st.bar_chart(weekly_additions[["BS", "MF", "FS", "OP"]])
+    # Prepare data for overall production plan totals
+    hypothetical_totals = pd.DataFrame([total["overall"] for total in hypothetical_result[1]])
+    hypothetical_totals["Day"] = hypothetical_totals.index
+
+    # Display overall production plan
+    st.line_chart(
+        hypothetical_totals.set_index("Day")[["BS", "MF", "FS", "OP"]],
+        use_container_width=True,
+        height=300
+    )
+
+    # Weekly Production Changes for Overall Plan
+    st.subheader("Weekly Production Changes (Overall)")
+    hypothetical_changes = pd.DataFrame([total["overall"] for total in hypothetical_result[2]])
+    hypothetical_changes["Week"] = hypothetical_changes.index // 7
+    weekly_changes = hypothetical_changes.groupby("Week").sum()
+    st.bar_chart(weekly_changes[["BS", "MF", "FS", "OP"]])
+
+    # Prepare species-specific data
+    forecasted_species_totals = pd.DataFrame([
+        {"Day": i, "Species": species, **data}
+        for i, daily in enumerate(forecast_result[1])
+        for species, data in daily["species"].items()
+    ])
+    hypothetical_species_totals = pd.DataFrame([
+        {"Day": i, "Species": species, **data}
+        for i, daily in enumerate(hypothetical_result[1])
+        for species, data in daily["species"].items()
+    ])
+    hypothetical_species_changes = pd.DataFrame([
+        {"Day": i, "Species": species, **data}
+        for i, daily in enumerate(hypothetical_result[2])
+        for species, data in daily["species"].items()
+    ])
+
+    # Display species-specific graphs
+    st.subheader("Species-Specific Graphs")
+    species_list = forecasted_species_totals["Species"].unique()
+
+    for species in species_list:
+        with st.expander(f"Graphs for {species}"):
+            # Species-specific production plan
+            species_plan_data = hypothetical_species_totals[
+                hypothetical_species_totals["Species"] == species
+            ]
+            st.line_chart(
+                species_plan_data.set_index("Day")[["BS", "MF", "FS", "OP"]],
+                use_container_width=True
+            )
+
+            # Weekly production changes for species
+            species_changes = hypothetical_species_changes[
+                hypothetical_species_changes["Species"] == species
+            ]
+            species_changes["Week"] = species_changes["Day"] // 7
+            weekly_species_changes = species_changes.groupby("Week").sum()
+            st.bar_chart(weekly_species_changes[["BS", "MF", "FS", "OP"]])
+
+    # Compliance View: Weekly Production Targets
+    st.subheader("Weekly Production Compliance View")
+
+    # Prepare weekly production targets by species
+    hypothetical_species_changes["Week"] = hypothetical_species_changes["Day"] // 7
+    weekly_production_targets = hypothetical_species_changes.groupby(["Week", "Species"])[
+        ["BS", "MF", "FS", "OP"]
+    ].sum().reset_index()
+
+    # Display the table in Streamlit
+    st.write("The table below shows the weekly production targets for each species and batch type:")
+    st.dataframe(weekly_production_targets)
+
+    # Add CSV download option
+    @st.cache_data
+    def convert_df_to_csv(df):
+        return df.to_csv(index=False).encode("utf-8")
+
+    csv_data = convert_df_to_csv(weekly_production_targets)
+    st.download_button(
+        label="Download Weekly Production Targets as CSV",
+        data=csv_data,
+        file_name="weekly_production_targets.csv",
+        mime="text/csv",
+    )
+
+    # Compliance View: Daily Production Targets
+    st.subheader("Daily Production Compliance View")
+
+    # Prepare daily production targets by species
+    daily_production_targets = hypothetical_species_changes.groupby(["Day", "Species"])[
+        ["BS", "MF", "FS", "OP"]
+    ].sum().reset_index()
+
+    # Display the table in Streamlit
+    st.write("The table below shows the daily production targets for each species and batch type:")
+    st.dataframe(daily_production_targets)
+
+    csv_data_daily = convert_df_to_csv(daily_production_targets)
+    st.download_button(
+        label="Download Daily Production Targets as CSV",
+        data=csv_data_daily,
+        file_name="daily_production_targets.csv",
+        mime="text/csv",
+    )
 
 # Footer
 st.write("Developed by BrainCoral Dev Team.")
