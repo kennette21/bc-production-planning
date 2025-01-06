@@ -8,6 +8,67 @@ import random
 from modules.farm import Farm, Batch
 from modules.bigquery_util import current_data, row_to_batch
 
+def generate_mock_compliance_data(planned: pd.DataFrame) -> pd.DataFrame:
+    """
+    Generate mock compliance data based on planned production data.
+
+    Parameters:
+        planned (pd.DataFrame): Planned production data.
+
+    Returns:
+        pd.DataFrame: Mock compliance data with random deviations.
+    """
+    def mock_value(plan_value):
+        if plan_value == 0:
+            return 0  # Keep as zero if planned value is zero
+        # Randomly generate a mock value above, equal, or below the planned value
+        deviation = random.choice([-1, 0, 1])
+        return max(0, plan_value + deviation * random.randint(1, 5))
+
+    # Apply the mock value function to all relevant cells
+    mock_data = planned.copy()
+    for col in ["BS", "MF", "FS", "OP"]:
+        if col in planned.columns:
+            mock_data[col] = planned[col].apply(mock_value)
+
+    return mock_data
+def style_compliance_table(actual, planned):
+    """
+    Style the compliance table with colors based on comparison to the planned values.
+
+    Parameters:
+        actual (pd.DataFrame): Actual production data.
+        planned (pd.DataFrame): Planned production data.
+
+    Returns:
+        pd.DataFrame.style: Styled DataFrame with color-coded cells.
+    """
+    # Columns to apply styling to
+    columns_to_style = ["BS", "MF", "FS", "OP"]
+
+    # Helper function to compare values and return styling
+    def highlight_cells(actual_value, planned_value):
+        if actual_value == 0:  # Skip styling for zero cells
+            return ""
+        elif actual_value < planned_value:
+            return "background-color: #ff9999;"  # Red for below planned
+        elif actual_value >= planned_value:
+            return "background-color: #006400; color: white;"  # Green for equal or above planned
+        else:
+            return ""
+
+    # Apply styling only to the selected columns
+    def apply_row_style(row):
+        return [
+            highlight_cells(row[col], planned.loc[row.name, col]) if col in columns_to_style else ""
+            for col in actual.columns
+        ]
+
+    # Apply the helper function row-wise
+    styled_df = actual.style.apply(apply_row_style, axis=1)
+
+    return styled_df
+
 # Helper functions to initialize default parameters
 def default_production_order():
     return {'PAST': 7000, 'APAL': 6000, 'APRO': 6000, 'PCLI': 3000, 'ACER': 5000}
@@ -256,9 +317,22 @@ if st.button("🚀 Run Forecast and Planning"):
         ["BS", "MF", "FS", "OP"]
     ].sum().reset_index()
 
-    # Display the table in Streamlit
+     # Generate mock compliance data for weekly production targets
+    weekly_compliance = generate_mock_compliance_data(weekly_production_targets)
+
+    # Display the planned vs actual (mock compliance) data side-by-side
     st.write("The table below shows the weekly production targets for each species and batch type:")
-    st.dataframe(weekly_production_targets)
+
+    col1, col2 = st.columns(2)
+    with col1:
+        st.write("Planned Weekly Production Targets:")
+        st.dataframe(weekly_production_targets)
+    with col2:
+        st.write("Actual Weekly Production (Mock Data):")
+        st.dataframe(
+            style_compliance_table(weekly_compliance, weekly_production_targets),
+            height=400,
+        )
 
     # Add CSV download option
     @st.cache_data
