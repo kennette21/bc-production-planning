@@ -6,7 +6,54 @@ import json
 import copy
 import random
 from modules.farm import Farm, Batch
-from modules.bigquery_util import current_data, row_to_batch
+from modules.bigquery_util import current_data, row_to_batch, save_locked_plan
+
+def combine_and_style_compliance_table(plan, compliance):
+    """
+    Combine the plan and compliance data into a single table with styled compliance cells.
+
+    Parameters:
+        plan (pd.DataFrame): Planned production targets.
+        compliance (pd.DataFrame): Mock compliance data.
+
+    Returns:
+        pd.DataFrame.style: Styled DataFrame combining plan and compliance.
+    """
+    # Combine plan and compliance into a single table
+    combined = plan.copy()
+
+    # Add "_Plan" and "_Compliance" columns
+    for col in ["BS", "MF", "FS", "OP"]:
+        if col in plan.columns:
+            combined[f"{col}_Plan"] = plan[col]
+            combined[f"{col}_Compliance"] = compliance[col]
+
+    # Drop original columns
+    combined = combined.drop(columns=["BS", "MF", "FS", "OP"])
+
+    # Helper function to style compliance cells
+    def style_cells(row, col_name):
+        if "_Compliance" in col_name:
+            plan_col = col_name.replace("_Compliance", "_Plan")
+            plan_value = row[plan_col]
+            compliance_value = row[col_name]
+            if compliance_value == 0:
+                return ""  # Do not style cells with a value of 0
+            elif compliance_value < plan_value:
+                return "background-color: #ff9999;"  # Red for below plan
+            elif compliance_value >= plan_value:
+                return "background-color: #006400; color: white;"  # Green for at/above plan
+        return ""
+
+    # Apply styling to compliance columns only
+    styled_table = combined.style.apply(
+        lambda row: [
+            style_cells(row, col) if "_Compliance" in col else "" for col in combined.columns
+        ],
+        axis=1,
+    )
+
+    return styled_table
 
 def create_unified_result(forecast_result, hypothetical_result):
     """
@@ -393,22 +440,33 @@ if st.button("🚀 Run Forecast and Planning"):
     # Display the planned vs actual (mock compliance) data side-by-side
     st.write("The table below shows the weekly production targets for each species and batch type:")
 
-    col1, col2 = st.columns(2)
-    with col1:
-        st.write("Planned Weekly Production Targets:")
-        st.dataframe(unified_weekly_production_targets)
-    with col2:
-        st.write("Actual Weekly Production (Mock Data):")
-        st.dataframe(
-            style_compliance_table(unified_weekly_compliance, unified_weekly_production_targets),
-            height=400,
-        )
+    # Compliance View: Weekly Production Targets
+    st.subheader("Weekly Production Compliance View")
+
+    # Group by week and species
+    unified_species_changes["Week"] = unified_species_changes["Day"] // 7
+    weekly_plan = unified_species_changes.groupby(["Week", "Species"])[
+        ["BS", "MF", "FS", "OP"]
+    ].sum().reset_index()
+
+    # Generate mock compliance data
+    weekly_compliance = generate_mock_compliance_data(weekly_plan)
+
+    # Combine and style the table
+    styled_weekly_table = combine_and_style_compliance_table(weekly_plan, weekly_compliance)
+
+    # Display the styled table
+    st.dataframe(styled_weekly_table, height=600)
 
     # Compliance View: Daily Production Targets
     st.subheader("Daily Production Compliance View")
 
     # Prepare daily production targets by species
     daily_production_targets = unified_species_changes.groupby(["Day", "Species"])[
+        ["BS", "MF", "FS", "OP"]
+    ].sum().reset_index()
+
+    daily_quantity_targets = unified_species_totals.groupby(["Day", "Species"])[
         ["BS", "MF", "FS", "OP"]
     ].sum().reset_index()
 

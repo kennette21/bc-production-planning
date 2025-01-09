@@ -141,13 +141,13 @@ class Farm:
             rolling_changes.append({"overall": forecast_changes, "species": forecast_changes_species})
             rolling_capacity.append({"overall": cur_avail_capacity, "stage": stage_capacity_remaining})
 
-            # Debugging Logs (optional)
-            print(f"Day: {day}")
-            print("Current Totals:", cur_totals)
-            print("Current Totals by Species:", cur_totals_species)
-            print("Overall Capacity Remaining:", cur_avail_capacity)
-            print("Stage Capacity Remaining:", stage_capacity_remaining)
-            print("")
+            # # Debugging Logs (optional)
+            # print(f"Day: {day}")
+            # print("Current Totals:", cur_totals)
+            # print("Current Totals by Species:", cur_totals_species)
+            # print("Overall Capacity Remaining:", cur_avail_capacity)
+            # print("Stage Capacity Remaining:", stage_capacity_remaining)
+            # print("")
 
         return rolling_inventory, rolling_totals, rolling_changes, rolling_capacity
 

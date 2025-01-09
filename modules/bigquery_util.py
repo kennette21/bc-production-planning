@@ -19,6 +19,47 @@ BS_MORTALITY_STD = 0.05
 MF_MORTALITY_STD = 0.1
 FS_MORTALITY_STD = 0.05
 
+def save_locked_plan(plan_id, unified_result):
+    """
+    Save the locked plan to BigQuery with its unique ID.
+    """
+    table_id = "brain-coral.prod_planning_mvp.locked_plans"
+
+    rows_to_insert = [
+        {
+            "plan_id": plan_id,
+            "locked_date": pd.Timestamp.now(),
+            "totals": unified_result[1],  # Rolling totals
+            "changes": unified_result[2],  # Rolling changes
+            "capacity": unified_result[3],  # Rolling capacity
+        }
+    ]
+
+    errors = client.insert_rows_json(table_id, rows_to_insert)
+    if errors:
+        raise RuntimeError(f"Error saving locked plan: {errors}")
+
+def load_locked_plan(plan_id):
+    """
+    Load a locked plan from BigQuery by its unique ID.
+    """
+    client = bigquery.Client()
+    query = f"""
+    SELECT * FROM `your_project.your_dataset.locked_plans`
+    WHERE plan_id = '{plan_id}'
+    """
+    return client.query(query).to_dataframe()
+
+def load_locked_plan_ids():
+    """
+    Get a list of all locked plan IDs.
+    """
+    client = bigquery.Client()
+    query = """
+    SELECT plan_id FROM `your_project.your_dataset.locked_plans`
+    """
+    return client.query(query).to_dataframe()["plan_id"].tolist()
+
 def row_to_batch(row: dict) -> Batch:
     """
     Convert a row from BigQuery into a Batch object.

@@ -2,4 +2,5 @@ streamlit
 pandas             # For data manipulation
 matplotlib         # For plotting
 google-cloud-bigquery
+google-cloud-bigquery-storage
 db-dtypes
