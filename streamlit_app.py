@@ -8,6 +8,26 @@ import random
 from modules.farm import Farm, Batch
 from modules.bigquery_util import current_data, row_to_batch
 
+def merge_forecast_and_recovery(forecast_fin, shortfall_recovery_fin):
+    """
+    Merge the forecast FIN and shortfall recovery FIN into a unified FIN.
+
+    Parameters:
+        forecast_fin (pd.DataFrame): Forecasted farm inventory numbers.
+        shortfall_recovery_fin (pd.DataFrame): Shortfall recovery farm inventory numbers.
+
+    Returns:
+        pd.DataFrame: Unified FIN combining forecast and recovery plans.
+    """
+    unified_fin = forecast_fin.copy()
+
+    # Add shortfall recovery numbers where applicable
+    for col in ["BS", "MF", "FS", "OP"]:
+        if col in shortfall_recovery_fin.columns:
+            unified_fin[col] = unified_fin[col] + shortfall_recovery_fin[col]
+
+    return unified_fin
+
 def generate_mock_compliance_data(planned: pd.DataFrame) -> pd.DataFrame:
     """
     Generate mock compliance data based on planned production data.
@@ -223,7 +243,7 @@ if st.button("🚀 Run Forecast and Planning"):
     )
 
     # Run forecast
-    st.subheader("Forecast Results")
+    st.subheader("Current Inventory Forecast")
     forecast_result = my_farm.forecast(
         days=forecast_days,
         production_order=production_order,
@@ -241,11 +261,12 @@ if st.button("🚀 Run Forecast and Planning"):
     )
 
     # Hypothetical Planning
-    st.subheader("Production Plan")
+    st.subheader("Shortfall Plan (hypothetical new broodstock and their forcast)")
     final_shortfall_species = {
         spec: forecast_result[1][-1]["species"].get(spec, {}).get("SF", 0)
         for spec in production_order.keys()
     }
+    # todo: name this shortfall_result for better readabiliyt
     hypothetical_result = my_farm.plan_future(
         forecast_days, final_shortfall_species, forecast_result[3]
     )
@@ -262,12 +283,33 @@ if st.button("🚀 Run Forecast and Planning"):
     )
 
     # Weekly Production Changes for Overall Plan
-    st.subheader("Weekly Production Changes (Overall)")
+    st.subheader("Production Plan (Current Inventory + Hypothetical BS Forcast)")
+    # Generate unified FIN
+    unified_fin = merge_forecast_and_recovery(
+        forecasted_totals,
+        hypothetical_totals
+    )
+    st.line_chart(
+        unified_fin.set_index("Day")[["BS", "MF", "FS", "OP"]],
+        use_container_width=True,
+        height=300
+    )
+
     hypothetical_changes = pd.DataFrame([total["overall"] for total in hypothetical_result[2]])
-    hypothetical_changes["Week"] = hypothetical_changes.index // 7
-    weekly_changes = hypothetical_changes.groupby("Week").sum()
+    forcast_changes = pd.DataFrame([total["overall"] for total in forecast_result[2]])
+    unified_additions = merge_forecast_and_recovery(
+        hypothetical_changes,
+        forcast_changes
+    )
+
+    # Weekly Production Changes for Overall Plan
+    st.subheader("Production Plan Weekly Changes")
+    hypothetical_changes = pd.DataFrame([total["overall"] for total in hypothetical_result[2]])
+    unified_additions["Week"] = unified_additions.index // 7
+    weekly_changes = unified_additions.groupby("Week").sum()
     st.bar_chart(weekly_changes[["BS", "MF", "FS", "OP"]])
 
+    # todo fix the species specific data with the unified FIN
     # Prepare species-specific data
     forecasted_species_totals = pd.DataFrame([
         {"Day": i, "Species": species, **data}
@@ -334,18 +376,21 @@ if st.button("🚀 Run Forecast and Planning"):
             height=400,
         )
 
-    # Add CSV download option
-    @st.cache_data
-    def convert_df_to_csv(df):
-        return df.to_csv(index=False).encode("utf-8")
+    # Generate mock compliance data for unified FIN
+    weekly_compliance_unified = generate_mock_compliance_data(unified_fin)
 
-    csv_data = convert_df_to_csv(weekly_production_targets)
-    st.download_button(
-        label="Download Weekly Production Targets as CSV",
-        data=csv_data,
-        file_name="weekly_production_targets.csv",
-        mime="text/csv",
-    )
+    # Display compliance tables
+    st.write("Unified Weekly Production Compliance:")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.write("Planned Unified Weekly Production Targets:")
+        st.dataframe(unified_fin)
+    with col2:
+        st.write("Actual Unified Weekly Production (Mock Data):")
+        st.dataframe(
+            style_compliance_table(weekly_compliance_unified, unified_fin),
+            height=400,
+        )
 
     # Compliance View: Daily Production Targets
     st.subheader("Daily Production Compliance View")
@@ -358,14 +403,6 @@ if st.button("🚀 Run Forecast and Planning"):
     # Display the table in Streamlit
     st.write("The table below shows the daily production targets for each species and batch type:")
     st.dataframe(daily_production_targets)
-
-    csv_data_daily = convert_df_to_csv(daily_production_targets)
-    st.download_button(
-        label="Download Daily Production Targets as CSV",
-        data=csv_data_daily,
-        file_name="daily_production_targets.csv",
-        mime="text/csv",
-    )
 
 # Footer
 st.write("Developed by BrainCoral Dev Team.")
