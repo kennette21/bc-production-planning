@@ -362,8 +362,8 @@ if st.button("🚀 Run Forecast and Planning"):
     st.bar_chart(weekly_changes[["BS", "MF", "FS", "OP"]])
 
     # Weekly Production Changes for Overall Plan
-    st.subheader("Production Plan Farm Capacity Available")
-    unified_capacity = pd.DataFrame([total["overall"] for total in unified_result[3]])
+    st.subheader("Production Plan Farm Capacity Occupied")
+    unified_capacity = pd.DataFrame([(farm_config["TANK_CAPACITY"] * farm_config["NUM_PROD_TANKS"]) - total["overall"] for total in unified_result[3]])
     unified_capacity["Week"] = unified_capacity.index // 7
     weekly_capacity_avail = unified_capacity.groupby("Week").max()
     st.bar_chart(weekly_capacity_avail)
