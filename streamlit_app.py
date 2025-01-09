@@ -55,7 +55,7 @@ def create_unified_result(forecast_result, hypothetical_result):
     unified_inventory = hypothetical_result[0]  # Use hypothetical inventory directly
     unified_totals = merge_lists(forecast_result[1], hypothetical_result[1])
     unified_changes = merge_lists(forecast_result[2], hypothetical_result[2])
-    unified_capacity = merge_lists(forecast_result[3], hypothetical_result[3], is_capacity=True)
+    unified_capacity = hypothetical_result[3]
 
     return unified_inventory, unified_totals, unified_changes, unified_capacity
 
@@ -357,10 +357,16 @@ if st.button("🚀 Run Forecast and Planning"):
 
     # Weekly Production Changes for Overall Plan
     st.subheader("Production Plan Weekly Changes")
-    hypothetical_changes = pd.DataFrame([total["overall"] for total in hypothetical_result[2]])
     unified_additions["Week"] = unified_additions.index // 7
     weekly_changes = unified_additions.groupby("Week").sum()
     st.bar_chart(weekly_changes[["BS", "MF", "FS", "OP"]])
+
+    # Weekly Production Changes for Overall Plan
+    st.subheader("Production Plan Farm Capacity Available")
+    unified_capacity = pd.DataFrame([total["overall"] for total in unified_result[3]])
+    unified_capacity["Week"] = unified_capacity.index // 7
+    weekly_capacity_avail = unified_capacity.groupby("Week").max()
+    st.bar_chart(weekly_capacity_avail)
 
     unified_species_totals = pd.DataFrame([
         {"Day": i, "Species": species, **data}
