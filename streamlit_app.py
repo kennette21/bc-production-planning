@@ -8,6 +8,57 @@ import random
 from modules.farm import Farm, Batch
 from modules.bigquery_util import current_data, row_to_batch
 
+def create_unified_result(forecast_result, hypothetical_result):
+    """
+    Combine forecast_result and hypothetical_result into a unified result.
+
+    Parameters:
+        forecast_result (tuple): The result from the forecast function, consisting of 
+                                 (rolling_inventory, rolling_totals, rolling_changes, rolling_capacity).
+        hypothetical_result (tuple): The result from the hypothetical (shortfall recovery) function, consisting of 
+                                      (rolling_inventory, rolling_totals, rolling_changes, rolling_capacity).
+
+    Returns:
+        tuple: Unified result in the same format as forecast_result and hypothetical_result.
+    """
+    def merge_lists(list1, list2, is_capacity=False):
+        merged = []
+        for day_data1, day_data2 in zip(list1, list2):
+            if not is_capacity:
+                # Regular merge for totals and changes
+                merged_day = {
+                    "overall": {
+                        key: day_data1["overall"].get(key, 0) + day_data2["overall"].get(key, 0)
+                        for key in set(day_data1["overall"]) | set(day_data2["overall"])
+                    },
+                    "species": {
+                        species: {
+                            key: day_data1["species"].get(species, {}).get(key, 0) +
+                                 day_data2["species"].get(species, {}).get(key, 0)
+                            for key in set(day_data1["species"].get(species, {})) | set(day_data2["species"].get(species, {}))
+                        }
+                        for species in set(day_data1["species"]) | set(day_data2["species"])
+                    }
+                }
+            else:
+                # Special merge for capacity
+                merged_day = {
+                    "overall": day_data1["overall"] + day_data2["overall"],
+                    "stage": {
+                        stage: day_data1["stage"].get(stage, 0) + day_data2["stage"].get(stage, 0)
+                        for stage in set(day_data1["stage"]) | set(day_data2["stage"])
+                    }
+                }
+            merged.append(merged_day)
+        return merged
+
+    unified_inventory = hypothetical_result[0]  # Use hypothetical inventory directly
+    unified_totals = merge_lists(forecast_result[1], hypothetical_result[1])
+    unified_changes = merge_lists(forecast_result[2], hypothetical_result[2])
+    unified_capacity = merge_lists(forecast_result[3], hypothetical_result[3], is_capacity=True)
+
+    return unified_inventory, unified_totals, unified_changes, unified_capacity
+
 def merge_forecast_and_recovery(forecast_fin, shortfall_recovery_fin):
     """
     Merge the forecast FIN and shortfall recovery FIN into a unified FIN.
@@ -271,6 +322,8 @@ if st.button("🚀 Run Forecast and Planning"):
         forecast_days, final_shortfall_species, forecast_result[3]
     )
 
+    unified_result = create_unified_result(forecast_result, hypothetical_result)
+
     # Prepare data for overall production plan totals
     hypothetical_totals = pd.DataFrame([total["overall"] for total in hypothetical_result[1]])
     hypothetical_totals["Day"] = hypothetical_totals.index
@@ -309,58 +362,27 @@ if st.button("🚀 Run Forecast and Planning"):
     weekly_changes = unified_additions.groupby("Week").sum()
     st.bar_chart(weekly_changes[["BS", "MF", "FS", "OP"]])
 
-    # todo fix the species specific data with the unified FIN
-    # Prepare species-specific data
-    forecasted_species_totals = pd.DataFrame([
+    unified_species_totals = pd.DataFrame([
         {"Day": i, "Species": species, **data}
-        for i, daily in enumerate(forecast_result[1])
+        for i, daily in enumerate(unified_result[1]) # change unified_fin to unified_totals
         for species, data in daily["species"].items()
     ])
-    hypothetical_species_totals = pd.DataFrame([
+    unified_species_changes = pd.DataFrame([
         {"Day": i, "Species": species, **data}
-        for i, daily in enumerate(hypothetical_result[1])
+        for i, daily in enumerate(unified_result[2])
         for species, data in daily["species"].items()
     ])
-    hypothetical_species_changes = pd.DataFrame([
-        {"Day": i, "Species": species, **data}
-        for i, daily in enumerate(hypothetical_result[2])
-        for species, data in daily["species"].items()
-    ])
-
-    # Display species-specific graphs
-    st.subheader("Species-Specific Graphs")
-    species_list = forecasted_species_totals["Species"].unique()
-
-    for species in species_list:
-        with st.expander(f"Graphs for {species}"):
-            # Species-specific production plan
-            species_plan_data = hypothetical_species_totals[
-                hypothetical_species_totals["Species"] == species
-            ]
-            st.line_chart(
-                species_plan_data.set_index("Day")[["BS", "MF", "FS", "OP"]],
-                use_container_width=True
-            )
-
-            # Weekly production changes for species
-            species_changes = hypothetical_species_changes[
-                hypothetical_species_changes["Species"] == species
-            ]
-            species_changes["Week"] = species_changes["Day"] // 7
-            weekly_species_changes = species_changes.groupby("Week").sum()
-            st.bar_chart(weekly_species_changes[["BS", "MF", "FS", "OP"]])
 
     # Compliance View: Weekly Production Targets
     st.subheader("Weekly Production Compliance View")
 
-    # Prepare weekly production targets by species
-    hypothetical_species_changes["Week"] = hypothetical_species_changes["Day"] // 7
-    weekly_production_targets = hypothetical_species_changes.groupby(["Week", "Species"])[
+    unified_species_changes["Week"] = unified_species_changes["Day"] // 7
+    unified_weekly_production_targets = unified_species_changes.groupby(["Week", "Species"])[
         ["BS", "MF", "FS", "OP"]
     ].sum().reset_index()
 
      # Generate mock compliance data for weekly production targets
-    weekly_compliance = generate_mock_compliance_data(weekly_production_targets)
+    unified_weekly_compliance = generate_mock_compliance_data(unified_weekly_production_targets)
 
     # Display the planned vs actual (mock compliance) data side-by-side
     st.write("The table below shows the weekly production targets for each species and batch type:")
@@ -368,27 +390,11 @@ if st.button("🚀 Run Forecast and Planning"):
     col1, col2 = st.columns(2)
     with col1:
         st.write("Planned Weekly Production Targets:")
-        st.dataframe(weekly_production_targets)
+        st.dataframe(unified_weekly_production_targets)
     with col2:
         st.write("Actual Weekly Production (Mock Data):")
         st.dataframe(
-            style_compliance_table(weekly_compliance, weekly_production_targets),
-            height=400,
-        )
-
-    # Generate mock compliance data for unified FIN
-    weekly_compliance_unified = generate_mock_compliance_data(unified_fin)
-
-    # Display compliance tables
-    st.write("Unified Weekly Production Compliance:")
-    col1, col2 = st.columns(2)
-    with col1:
-        st.write("Planned Unified Weekly Production Targets:")
-        st.dataframe(unified_fin)
-    with col2:
-        st.write("Actual Unified Weekly Production (Mock Data):")
-        st.dataframe(
-            style_compliance_table(weekly_compliance_unified, unified_fin),
+            style_compliance_table(unified_weekly_compliance, unified_weekly_production_targets),
             height=400,
         )
 
@@ -396,7 +402,7 @@ if st.button("🚀 Run Forecast and Planning"):
     st.subheader("Daily Production Compliance View")
 
     # Prepare daily production targets by species
-    daily_production_targets = hypothetical_species_changes.groupby(["Day", "Species"])[
+    daily_production_targets = unified_species_changes.groupby(["Day", "Species"])[
         ["BS", "MF", "FS", "OP"]
     ].sum().reset_index()
 
