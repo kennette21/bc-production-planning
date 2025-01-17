@@ -6,7 +6,7 @@ import json
 import copy
 import random
 from modules.farm import Farm, Batch
-from modules.bigquery_util import current_data, row_to_batch, save_locked_plan
+from modules.bigquery_util import current_data, row_to_batch
 
 def combine_and_style_compliance_table(plan, compliance):
     """
@@ -150,42 +150,6 @@ def generate_mock_compliance_data(planned: pd.DataFrame) -> pd.DataFrame:
             mock_data[col] = planned[col].apply(mock_value)
 
     return mock_data
-def style_compliance_table(actual, planned):
-    """
-    Style the compliance table with colors based on comparison to the planned values.
-
-    Parameters:
-        actual (pd.DataFrame): Actual production data.
-        planned (pd.DataFrame): Planned production data.
-
-    Returns:
-        pd.DataFrame.style: Styled DataFrame with color-coded cells.
-    """
-    # Columns to apply styling to
-    columns_to_style = ["BS", "MF", "FS", "OP"]
-
-    # Helper function to compare values and return styling
-    def highlight_cells(actual_value, planned_value):
-        if actual_value == 0:  # Skip styling for zero cells
-            return ""
-        elif actual_value < planned_value:
-            return "background-color: #ff9999;"  # Red for below planned
-        elif actual_value >= planned_value:
-            return "background-color: #006400; color: white;"  # Green for equal or above planned
-        else:
-            return ""
-
-    # Apply styling only to the selected columns
-    def apply_row_style(row):
-        return [
-            highlight_cells(row[col], planned.loc[row.name, col]) if col in columns_to_style else ""
-            for col in actual.columns
-        ]
-
-    # Apply the helper function row-wise
-    styled_df = actual.style.apply(apply_row_style, axis=1)
-
-    return styled_df
 
 # Helper functions to initialize default parameters
 def default_production_order():
@@ -206,31 +170,35 @@ def default_farm_config():
         "FS_MORTALITY_STD": 0.05,
     }
 
+page = st.sidebar.selectbox("Choose a page", ["Production Planning", "Compliance"])
+
 
 # Highlight instructions using markdown
-st.sidebar.markdown(
-    """
-    <style>
-    .important {
-        background-color: #FFFACD;
-        color: #000;
-        font-weight: bold;
-        padding: 10px;
-        border-radius: 5px;
-    }
-    </style>
-    <div class="important">
-    ⚠️ Remember: Updating these values will change the forecast and plan!
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+if page == "Production Planning": 
+    st.sidebar.markdown(
+        """
+        <style>
+        .important {
+            background-color: #FFFACD;
+            color: #000;
+            font-weight: bold;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        </style>
+        <div class="important">
+        ⚠️ Remember: Updating these values will change the forecast and plan!
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 # Streamlit app layout
 st.title("Coral Production Planning App")
 
 # Configuration Section
 st.sidebar.title("🔧 Configuration")
+
 st.sidebar.markdown(
     """
     **Customize the production parameters here.**
@@ -364,18 +332,17 @@ if st.button("🚀 Run Forecast and Planning"):
         spec: forecast_result[1][-1]["species"].get(spec, {}).get("SF", 0)
         for spec in production_order.keys()
     }
-    # todo: name this shortfall_result for better readabiliyt
+
     hypothetical_result = my_farm.plan_future(
         forecast_days, final_shortfall_species, forecast_result[3]
     )
 
-    unified_result = create_unified_result(forecast_result, hypothetical_result)
 
     # Prepare data for overall production plan totals
     hypothetical_totals = pd.DataFrame([total["overall"] for total in hypothetical_result[1]])
     hypothetical_totals["Day"] = hypothetical_totals.index
 
-    # Display overall production plan
+    # Display shortfall recovery only
     st.line_chart(
         hypothetical_totals.set_index("Day")[["BS", "MF", "FS", "OP"]],
         use_container_width=True,
@@ -385,27 +352,23 @@ if st.button("🚀 Run Forecast and Planning"):
     # Weekly Production Changes for Overall Plan
     st.subheader("Production Plan (Current Inventory + Hypothetical BS Forcast)")
     # Generate unified FIN
-    unified_fin = merge_forecast_and_recovery(
-        forecasted_totals,
-        hypothetical_totals
-    )
+    unified_result = create_unified_result(forecast_result, hypothetical_result)
+
+    # Prepare data for overall totals
+    unified_totals_ = pd.DataFrame([total['overall'] for total in unified_result[1]])
+    unified_totals_["Day"] = unified_totals_.index
     st.line_chart(
-        unified_fin.set_index("Day")[["BS", "MF", "FS", "OP"]],
+        unified_totals_.set_index("Day")[["BS", "MF", "FS", "OP"]],
         use_container_width=True,
         height=300
     )
 
-    hypothetical_changes = pd.DataFrame([total["overall"] for total in hypothetical_result[2]])
-    forcast_changes = pd.DataFrame([total["overall"] for total in forecast_result[2]])
-    unified_additions = merge_forecast_and_recovery(
-        hypothetical_changes,
-        forcast_changes
-    )
+    unified_changes = pd.DataFrame([total["overall"] for total in unified_result[2]])
 
     # Weekly Production Changes for Overall Plan
     st.subheader("Production Plan Weekly Changes")
-    unified_additions["Week"] = unified_additions.index // 7
-    weekly_changes = unified_additions.groupby("Week").sum()
+    unified_changes["Week"] = unified_changes.index // 7
+    weekly_changes = unified_changes.groupby("Week").sum()
     st.bar_chart(weekly_changes[["BS", "MF", "FS", "OP"]])
 
     # Weekly Production Changes for Overall Plan
@@ -417,7 +380,7 @@ if st.button("🚀 Run Forecast and Planning"):
 
     unified_species_totals = pd.DataFrame([
         {"Day": i, "Species": species, **data}
-        for i, daily in enumerate(unified_result[1]) # change unified_fin to unified_totals
+        for i, daily in enumerate(unified_result[1])
         for species, data in daily["species"].items()
     ])
     unified_species_changes = pd.DataFrame([
@@ -425,20 +388,6 @@ if st.button("🚀 Run Forecast and Planning"):
         for i, daily in enumerate(unified_result[2])
         for species, data in daily["species"].items()
     ])
-
-    # Compliance View: Weekly Production Targets
-    st.subheader("Weekly Production Compliance View")
-
-    unified_species_changes["Week"] = unified_species_changes["Day"] // 7
-    unified_weekly_production_targets = unified_species_changes.groupby(["Week", "Species"])[
-        ["BS", "MF", "FS", "OP"]
-    ].sum().reset_index()
-
-     # Generate mock compliance data for weekly production targets
-    unified_weekly_compliance = generate_mock_compliance_data(unified_weekly_production_targets)
-
-    # Display the planned vs actual (mock compliance) data side-by-side
-    st.write("The table below shows the weekly production targets for each species and batch type:")
 
     # Compliance View: Weekly Production Targets
     st.subheader("Weekly Production Compliance View")

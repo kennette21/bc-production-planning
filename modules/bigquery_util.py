@@ -19,44 +19,26 @@ BS_MORTALITY_STD = 0.05
 MF_MORTALITY_STD = 0.1
 FS_MORTALITY_STD = 0.05
 
-def save_locked_plan(plan_id, unified_result):
-    """
-    Save the locked plan to BigQuery with its unique ID.
-    """
-    table_id = "brain-coral.prod_planning_mvp.locked_plans"
+def save_production_plan_to_bigquery(plan_name, plan_data):
+    plan_data["PlanName"] = plan_name
+    plan_data["SavedAt"] = pd.Timestamp.now()
+    plan_data.to_gbq("brain-coral.prod_planning_mvp.locked_plans", if_exists="append")
 
-    rows_to_insert = [
-        {
-            "plan_id": plan_id,
-            "locked_date": pd.Timestamp.now(),
-            "totals": unified_result[1],  # Rolling totals
-            "changes": unified_result[2],  # Rolling changes
-            "capacity": unified_result[3],  # Rolling capacity
-        }
-    ]
-
-    errors = client.insert_rows_json(table_id, rows_to_insert)
-    if errors:
-        raise RuntimeError(f"Error saving locked plan: {errors}")
-
-def load_locked_plan(plan_id):
-    """
-    Load a locked plan from BigQuery by its unique ID.
-    """
-    client = bigquery.Client()
+def load_production_plan_from_bigquery(plan_name):
     query = f"""
-    SELECT * FROM `your_project.your_dataset.locked_plans`
-    WHERE plan_id = '{plan_id}'
+        SELECT *
+        FROM `your_dataset.production_plans`
+        WHERE PlanName = '{plan_name}'
     """
-    return client.query(query).to_dataframe()
+    return execute_query(query)
 
-def load_locked_plan_ids():
+def load_saved_plan_names():
     """
     Get a list of all locked plan IDs.
     """
     client = bigquery.Client()
     query = """
-    SELECT plan_id FROM `your_project.your_dataset.locked_plans`
+    SELECT PlanName FROM `brain-coral.prod_planning_mvp.locked_plans`
     """
     return client.query(query).to_dataframe()["plan_id"].tolist()
 
