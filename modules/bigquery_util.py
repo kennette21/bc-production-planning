@@ -19,10 +19,50 @@ BS_MORTALITY_STD = 0.05
 MF_MORTALITY_STD = 0.1
 FS_MORTALITY_STD = 0.05
 
-def save_production_plan_to_bigquery(plan_name, plan_data):
-    plan_data["PlanName"] = plan_name
-    plan_data["SavedAt"] = pd.Timestamp.now()
-    plan_data.to_gbq("brain-coral.prod_planning_mvp.locked_plans", if_exists="append")
+def save_production_plan_to_bigquery(plan_name, unified_result):
+    """
+    Save the unified production plan (unified_result) to BigQuery in a unified table.
+
+    Parameters:
+        plan_name (str): Name of the production plan.
+        unified_result (tuple): The unified production plan result, containing rolling totals and changes.
+
+    Returns:
+        str: Success message or error message.
+    """
+    # Extract daily totals
+    daily_totals = pd.DataFrame([
+        {"Day": day, "Type": "totals", "Species": None, **total["overall"]}
+        for day, total in enumerate(unified_result[1])
+    ])
+
+    # Extract daily additions
+    daily_additions = pd.DataFrame([
+        {"Day": day, "Type": "additions", "Species": None, **changes["overall"]}
+        for day, changes in enumerate(unified_result[2])
+    ])
+
+    # Extract species-level totals
+    species_totals = pd.DataFrame([
+        {"Day": day, "Type": "species", "Species": species, **data}
+        for day, total in enumerate(unified_result[1])
+        for species, data in total["species"].items()
+    ])
+
+    # Combine all data
+    combined_data = pd.concat([daily_totals, daily_additions, species_totals], ignore_index=True)
+
+    # Add metadata
+    combined_data["PlanName"] = plan_name
+    combined_data["SavedAt"] = pd.Timestamp.now()
+
+    # Save to BigQuery
+    table_id = "brain-coral.prod_planning_mvp.production_plans"
+    try:
+        combined_data.to_gbq(table_id, if_exists="append", credentials=credentials)
+        return f"Production plan '{plan_name}' saved successfully!"
+    except Exception as e:
+        return f"Error saving production plan '{plan_name}': {e}"
 
 def load_production_plan_from_bigquery(plan_name):
     query = f"""
