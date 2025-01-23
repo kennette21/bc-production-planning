@@ -44,13 +44,20 @@ def save_production_plan_to_bigquery(plan_name, unified_result):
 
     # Extract species-level totals
     species_totals = pd.DataFrame([
-        {"Day": day, "Type": "species", "Species": species, **data}
+        {"Day": day, "Type": "species-totals", "Species": species, **data}
         for day, total in enumerate(unified_result[1])
         for species, data in total["species"].items()
     ])
 
+    # Extract species-level totals
+    species_additions = pd.DataFrame([
+        {"Day": day, "Type": "species-additions", "Species": species, **data}
+        for day, total in enumerate(unified_result[2])
+        for species, data in total["species"].items()
+    ])
+
     # Combine all data
-    combined_data = pd.concat([daily_totals, daily_additions, species_totals], ignore_index=True)
+    combined_data = pd.concat([daily_totals, daily_additions, species_totals, species_additions], ignore_index=True)
 
     # Add metadata
     combined_data["PlanName"] = plan_name

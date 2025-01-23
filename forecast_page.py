@@ -119,6 +119,8 @@ def forecast_page():
         unified_totals["Day"] = unified_totals.index
         st.line_chart(unified_totals.set_index("Day")[["BS", "MF", "FS", "OP"]])
 
+        st.table(unified_totals)
+
     # Save Unified Plan
     st.subheader("Save Unified Production Plan")
     plan_name = st.text_input("Enter a name for the production plan:", "")
