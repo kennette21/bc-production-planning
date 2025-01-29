@@ -182,7 +182,59 @@ def current_data() -> pd.DataFrame:
         WHERE 
             CurrentQuantity > 0 AND
             Tenant = 'freeport' AND
-            (CurrentLocationType = 'ex situ' OR OutplantDate > '2024-12-01') AND 
+            (CurrentLocationType = 'ex situ') AND 
             CurrentLocationName NOT IN ('Reef Tank', 'Happy Tank', 'Spawning System', 'Tree Tank')
     """
     return execute_query(QUERY)
+
+def historical_data(date: str) -> pd.DataFrame:
+    """
+    Pull the  data at the farm from a particular date. that it can be piped into the model.
+    """
+
+    # Base query fragment to avoid redundancy
+    def get_query(table_name: str, include_fs_plug_count: bool = False) -> str:
+        columns = f"""
+            batch_doc_id AS BatchDocID,
+            batch_id AS BatchID,
+            LEFT(batch_id, 4) AS Species,
+            batch_alteration AS Alteration,
+            NULL AS SurfaceArea,
+            current_batch_quantity AS CurrentQuantity,
+            current_location_type AS CurrentLocationType,
+            {'current_batch_fs_plug_count AS CurrentFSPlugCount,' if include_fs_plug_count else 'NULL AS CurrentFSPlugCount,'}
+            DATE(started_at) AS StartDate,
+            outplant_date AS OutplantDate,
+            NULL AS StdBroodstockAcclimationDays,
+            NULL AS StdBroodstockQuarantineDays,
+            NULL AS StdBroodstockMortalityPct,
+            NULL AS StdBroodstockSAConversionRatio,
+            NULL AS StdMicrofragCycleDays,
+            NULL AS StdMicrofragMortalityPct,
+            NULL AS StdFusionStructureCycleDays,
+            NULL AS StdFusionStructureMortalityPct
+        """
+
+        return f"""
+        SELECT {columns}
+        FROM `{table_name}`
+        WHERE 
+            is_last_row_batch_day = True AND
+            tenant = 'tenants/freeport' AND
+            transition_date = '{date}' AND
+            current_location_type = 'ex situ' AND 
+            current_location NOT IN ('Reef Tank', 'Happy Tank', 'Spawning System', 'Tree Tank')
+        """
+
+    # Combine all UNION queries
+    QUERY = f"""
+    {get_query('brain-coral.api.daily_batch_mf')}
+    UNION ALL
+    {get_query('brain-coral.api.daily_batch_fs', include_fs_plug_count=True)}
+    UNION ALL
+    {get_query('brain-coral.api.daily_batch_broodstock')}
+    """
+
+    # Execute the query and return the resulting DataFrame
+    df = execute_query(QUERY)    
+    return df

@@ -8,6 +8,10 @@ def compliance_page():
 
     st.sidebar.markdown("Analyze farm performance against production plans.")
 
+    # todo: fetch prod plan fin from this tab
+    # todo: get historical fin from date in prod plan fin
+
+
     # Mock: Load a locked plan (replace with actual retrieval logic)
     locked_plan = pd.DataFrame({
         "Week": [1, 2, 3],
@@ -19,7 +23,7 @@ def compliance_page():
     })
 
     # Generate compliance data
-    compliance_data = generate_mock_compliance_data(locked_plan)
+    compliance_data = generate_mock_compliance_data(locked_plan) # call andrews function
 
     # Combine and Style Compliance Table
     styled_compliance_table = combine_and_style_compliance_table(locked_plan, compliance_data)

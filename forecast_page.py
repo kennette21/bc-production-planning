@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import json
 from modules.farm import Farm, Batch
-from modules.bigquery_util import current_data, row_to_batch, save_production_plan_to_bigquery
+from modules.bigquery_util import current_data, historical_data, row_to_batch, save_production_plan_to_bigquery
 from modules.utils import (
     default_production_order,
     default_farm_config,
@@ -67,13 +67,31 @@ def forecast_page():
     # Initialize batches
     batches_list = []
     if data_source == "Fetch from BigQuery":
-        st.sidebar.write("Fetching data from BigQuery...")
-        try:
-            df_current = current_data()
-            batches_list = [row_to_batch(row) for _, row in df_current.iterrows()]
-            st.sidebar.success("Data fetched successfully!")
-        except Exception as e:
-            st.sidebar.error(f"Error fetching data: {e}")
+       # Add a placeholder option to force user selection
+        date_option = st.sidebar.radio(
+            "Select Date Option",
+            options=["Select an Option", "Current Date", "Enter a Specific Date"],
+            index=0,
+        )
+
+        # Ensure user makes a choice before running queries
+        if date_option == "Current Date":
+            try:
+                df_batches = current_data()  # Fetch current data
+                batches_list = [row_to_batch(row) for _, row in df_batches.iterrows()]
+                st.sidebar.success("Data fetched successfully!")
+            except Exception as e:
+                st.sidebar.error(f"Error fetching data: {e}")
+
+        elif date_option == "Enter a Specific Date":
+            selected_date = st.sidebar.text_input("Enter date (YYYY-MM-DD)")
+            if selected_date:  # Ensure a date is entered before fetching
+                try:
+                    df_batches = historical_data(selected_date)  # Fetch historical data
+                    batches_list = [row_to_batch(row) for _, row in df_batches.iterrows()]
+                    st.sidebar.success("Data fetched successfully!")
+                except Exception as e:
+                    st.sidebar.error(f"Error fetching data: {e}")
     else:
         for i in range(5):
             species = list(default_production_order().keys())[i % 5]
