@@ -32,10 +32,16 @@ def forecast_page():
         unsafe_allow_html=True,
     )
 
+    tenant_option = st.sidebar.radio(
+            "Select Tenant",
+            options=["saudi", "freeport"],
+            index=0,
+        )
+
     # Sidebar Inputs
     production_order_input = st.sidebar.text_area(
         "Production Order (JSON)",
-        value=json.dumps(default_production_order(), indent=4),
+        value=json.dumps(default_production_order(tenant_option), indent=4),
         height=200,
     )
     try:
@@ -46,7 +52,7 @@ def forecast_page():
 
     farm_config_input = st.sidebar.text_area(
         "Farm Configuration (JSON)",
-        value=json.dumps(default_farm_config(), indent=4),
+        value=json.dumps(default_farm_config(tenant_option), indent=4),
         height=300,
     )
     try:
@@ -74,12 +80,6 @@ def forecast_page():
             index=0,
         )
 
-        tenant_option = st.sidebar.radio(
-            "Select Tenant",
-            options=["saudi", "freeport"],
-            index=0,
-        )
-
         # Ensure user makes a choice before running queries
         if date_option == "Current Date":
             try:
@@ -100,7 +100,7 @@ def forecast_page():
                     st.sidebar.error(f"Error fetching data: {e}")
     else:
         for i in range(5):
-            species = list(default_production_order().keys())[i % 5]
+            species = list(default_production_order(tenant_option).keys())[i % 5]
             batches_list.append(Batch(batch_id=f"TEST-{i}", species=species, quantity=100, stage="BS", start_date=0))
 
     # Run Forecast and Planning

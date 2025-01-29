@@ -2,13 +2,17 @@ import pandas as pd
 import random
 
 # Helper functions to initialize default parameters
-def default_production_order():
-    return {'PAST': 7000, 'APAL': 6000, 'APRO': 6000, 'PCLI': 3000, 'ACER': 5000}
+def default_production_order(tenant: str):
+    if (tenant == 'saudi'):
+        return {'AARA': 30000, 'PVER': 30000, 'ACYT': 10000, 'PNOD': 5000, 'ADIG': 500}
+    else:
+        return {'PAST': 7000, 'APAL': 6000, 'APRO': 6000, 'PCLI': 3000, 'ACER': 5000}
 
-def default_farm_config():
-    return {
-        "NUM_PROD_TANKS": 27,
-        "TANK_CAPACITY": 1000,
+def default_farm_config(tenant: str):
+    if (tenant == 'saudi'):
+         return {
+        "NUM_PROD_TANKS": 32,
+        "TANK_CAPACITY": 2100,
         "STAGE_CAPACITIES": {"BS": 1000, "MF": 300, "FS": 300, "OP": 1000},
         "DEFAULT_BS_QUANTITY": 100,
         "MAX_BATCH_QUANTITY": 100,
@@ -18,7 +22,21 @@ def default_farm_config():
         "BS_MORTALITY_STD": 0.05,
         "MF_MORTALITY_STD": 0.1,
         "FS_MORTALITY_STD": 0.05,
-    }
+    }   
+    else: 
+        return {
+            "NUM_PROD_TANKS": 27,
+            "TANK_CAPACITY": 1000,
+            "STAGE_CAPACITIES": {"BS": 1000, "MF": 300, "FS": 300, "OP": 1000},
+            "DEFAULT_BS_QUANTITY": 100,
+            "MAX_BATCH_QUANTITY": 100,
+            "BS_CYCLE_DAYS": 28,
+            "MF_CYCLE_DAYS": 30,
+            "FS_CYCLE_DAYS": 90,
+            "BS_MORTALITY_STD": 0.05,
+            "MF_MORTALITY_STD": 0.1,
+            "FS_MORTALITY_STD": 0.05,
+        }
 
 def combine_and_style_compliance_table(plan, compliance):
     combined = plan.copy()
