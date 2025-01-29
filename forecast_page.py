@@ -143,6 +143,20 @@ def forecast_page():
         unified_totals["Day"] = unified_totals.index
         st.line_chart(unified_totals.set_index("Day")[["BS", "MF", "FS", "OP"]])
 
+        # Weekly Production Changes for Overall Plan    
+        st.subheader("Production Plan Weekly Changes")
+        unified_changes = pd.DataFrame([total["overall"] for total in unified_result[2]])
+        unified_changes["Week"] = unified_changes.index // 7
+        weekly_changes = unified_changes.groupby("Week").sum()
+        st.bar_chart(weekly_changes[["BS", "MF", "FS", "OP"]])
+
+        # Weekly Production Changes for Overall Plan
+        st.subheader("Production Plan Farm Capacity Occupied")
+        unified_capacity = pd.DataFrame([(farm_config["TANK_CAPACITY"] * farm_config["NUM_PROD_TANKS"]) - total["overall"] for total in unified_result[3]])
+        unified_capacity["Week"] = unified_capacity.index // 7
+        weekly_capacity_avail = unified_capacity.groupby("Week").max()
+        st.bar_chart(weekly_capacity_avail)
+
         st.table(unified_totals)
 
     # Save Unified Plan
