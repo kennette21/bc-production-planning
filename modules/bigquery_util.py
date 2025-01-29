@@ -70,24 +70,79 @@ def save_production_plan_to_bigquery(plan_name, unified_result, tenant: str):
         return f"Production plan '{plan_name}' saved successfully!"
     except Exception as e:
         return f"Error saving production plan '{plan_name}': {e}"
+    
+def load_historical_fin_from_bigquery(date: str):
+    return "";
 
-def load_production_plan_from_bigquery(plan_name):
+def load_saved_plan_names():
+    """
+    Fetch all unique plan names from the production plans table.
+    """
+    query = """
+    SELECT DISTINCT PlanName FROM `brain-coral.prod_planning_mvp.production_plans`
+    """
+    return client.query(query).to_dataframe()["PlanName"].tolist()
+
+def load_production_plan_from_bigquery(plan_name: str) -> pd.DataFrame:
+    """
+    Fetch a locked production plan from BigQuery based on its name.
+    """
     query = f"""
-        SELECT *
-        FROM `your_dataset.production_plans`
+        SELECT * 
+        FROM `brain-coral.prod_planning_mvp.production_plans`
         WHERE PlanName = '{plan_name}'
     """
     return execute_query(query)
 
-def load_saved_plan_names():
+def load_historical_fin_from_bigquery(saved_date: str) -> pd.DataFrame:
     """
-    Get a list of all locked plan IDs.
+    Fetch historical FIN (farm inventory numbers) from BigQuery based on the saved production plan date.
     """
-    client = bigquery.Client()
-    query = """
-    SELECT PlanName FROM `brain-coral.prod_planning_mvp.locked_plans`
+    query = f"""
+        WITH blank_table as (
+            SELECT
+                DISTINCT
+                transition_date,
+                slug,
+                tenant
+            FROM (
+                SELECT transition_date, slug, tenant FROM `brain-coral.prod_planning_mvp.daily_totals_bs`
+                UNION ALL
+                SELECT transition_date, slug, tenant FROM `brain-coral.prod_planning_mvp.daily_totals_mf`
+                UNION ALL
+                SELECT transition_date, slug, tenant FROM `brain-coral.prod_planning_mvp.daily_totals_fs`
+            )
+        ),
+        species_layer as (
+            SELECT
+                NULL as PlanName,
+                NULL as SavedAt,
+                0 as Day,
+                "species" as Type,
+                bs.current_quantity as BS,
+                mf.current_quantity as MF,
+                fs.current_fs_plug as FS,
+                fs.outplant_fs_plug as OP,
+                NULL as SF,
+                blank.tenant as tenant
+            FROM blank_table as blank
+            LEFT JOIN `brain-coral.prod_planning_mvp.daily_totals_bs` as bs ON
+                blank.transition_date = bs.transition_date AND
+                blank.slug = bs.slug AND
+                blank.tenant = bs.tenant
+            LEFT JOIN `brain-coral.prod_planning_mvp.daily_totals_mf` as mf ON
+                blank.transition_date = mf.transition_date AND
+                blank.slug = mf.slug AND
+                blank.tenant = mf.tenant
+            LEFT JOIN `brain-coral.prod_planning_mvp.daily_totals_fs` as fs ON
+                blank.transition_date = fs.transition_date AND
+                blank.slug = fs.slug AND
+                blank.tenant = fs.tenant
+        )
+        SELECT * FROM species_layer
     """
-    return client.query(query).to_dataframe()["plan_id"].tolist()
+    return execute_query(query)
+
 
 def row_to_batch(row: dict) -> Batch:
     """
