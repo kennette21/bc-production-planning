@@ -19,7 +19,7 @@ BS_MORTALITY_STD = 0.05
 MF_MORTALITY_STD = 0.1
 FS_MORTALITY_STD = 0.05
 
-def save_production_plan_to_bigquery(plan_name, unified_result):
+def save_production_plan_to_bigquery(plan_name, unified_result, tenant: str):
     """
     Save the unified production plan (unified_result) to BigQuery in a unified table.
 
@@ -32,26 +32,26 @@ def save_production_plan_to_bigquery(plan_name, unified_result):
     """
     # Extract daily totals
     daily_totals = pd.DataFrame([
-        {"Day": day, "Type": "totals", "Species": None, **total["overall"]}
+        {"Day": day, "Type": "totals", "Species": None, "tenant": tenant, **total["overall"]}
         for day, total in enumerate(unified_result[1])
     ])
 
     # Extract daily additions
     daily_additions = pd.DataFrame([
-        {"Day": day, "Type": "additions", "Species": None, **changes["overall"]}
+        {"Day": day, "Type": "additions", "Species": None, "tenant": tenant, **changes["overall"]}
         for day, changes in enumerate(unified_result[2])
     ])
 
     # Extract species-level totals
     species_totals = pd.DataFrame([
-        {"Day": day, "Type": "species-totals", "Species": species, **data}
+        {"Day": day, "Type": "species-totals", "Species": species, "tenant": tenant, **data}
         for day, total in enumerate(unified_result[1])
         for species, data in total["species"].items()
     ])
 
     # Extract species-level totals
     species_additions = pd.DataFrame([
-        {"Day": day, "Type": "species-additions", "Species": species, **data}
+        {"Day": day, "Type": "species-additions", "Species": species, "tenant": tenant, **data}
         for day, total in enumerate(unified_result[2])
         for species, data in total["species"].items()
     ])
@@ -150,12 +150,12 @@ def execute_query(query: str) -> pd.DataFrame:
     results = query_job.result()  # Waits for query to finish
     return results.to_dataframe()
 
-def current_data() -> pd.DataFrame:
+def current_data(tenant: str) -> pd.DataFrame:
     """
     Pull the current data at the farm so that it can be piped into the model.
     Includes outplants in December 2024 for demonstration purposes.
     """
-    QUERY = """
+    QUERY = f"""
         SELECT
             BatchDocID,
             BatchID,
@@ -181,13 +181,13 @@ def current_data() -> pd.DataFrame:
         FROM `brain-coral.api.batches_clean` 
         WHERE 
             CurrentQuantity > 0 AND
-            Tenant = 'freeport' AND
+            Tenant = '{tenant}' AND
             (CurrentLocationType = 'ex situ') AND 
             CurrentLocationName NOT IN ('Reef Tank', 'Happy Tank', 'Spawning System', 'Tree Tank')
     """
     return execute_query(QUERY)
 
-def historical_data(date: str) -> pd.DataFrame:
+def historical_data(date: str, tenant: str) -> pd.DataFrame:
     """
     Pull the  data at the farm from a particular date. that it can be piped into the model.
     """
@@ -220,7 +220,7 @@ def historical_data(date: str) -> pd.DataFrame:
         FROM `{table_name}`
         WHERE 
             is_last_row_batch_day = True AND
-            tenant = 'tenants/freeport' AND
+            tenant = 'tenants/{tenant}' AND
             transition_date = '{date}' AND
             current_location_type = 'ex situ' AND 
             current_location NOT IN ('Reef Tank', 'Happy Tank', 'Spawning System', 'Tree Tank')

@@ -74,10 +74,16 @@ def forecast_page():
             index=0,
         )
 
+        tenant_option = st.sidebar.radio(
+            "Select Tenant",
+            options=["saudi", "freeport"],
+            index=0,
+        )
+
         # Ensure user makes a choice before running queries
         if date_option == "Current Date":
             try:
-                df_batches = current_data()  # Fetch current data
+                df_batches = current_data(tenant_option)  # Fetch current data
                 batches_list = [row_to_batch(row) for _, row in df_batches.iterrows()]
                 st.sidebar.success("Data fetched successfully!")
             except Exception as e:
@@ -87,7 +93,7 @@ def forecast_page():
             selected_date = st.sidebar.text_input("Enter date (YYYY-MM-DD)")
             if selected_date:  # Ensure a date is entered before fetching
                 try:
-                    df_batches = historical_data(selected_date)  # Fetch historical data
+                    df_batches = historical_data(selected_date, tenant_option)  # Fetch historical data
                     batches_list = [row_to_batch(row) for _, row in df_batches.iterrows()]
                     st.sidebar.success("Data fetched successfully!")
                 except Exception as e:
@@ -113,7 +119,7 @@ def forecast_page():
             spec: forecast_result[1][-1]["species"].get(spec, {}).get("SF", 0)
             for spec in production_order.keys()
         }
-        hypothetical_result = my_farm.plan_future(forecast_days, final_shortfall_species, forecast_result[3])
+        hypothetical_result = my_farm.plan_future(forecast_days, final_shortfall_species, forecast_result[3])        
         unified_result = create_unified_result(forecast_result, hypothetical_result)
 
         # Save unified_result to session state
@@ -144,7 +150,7 @@ def forecast_page():
     plan_name = st.text_input("Enter a name for the production plan:", "")
     if st.button("💾 Save Production Plan", key="save_plan_button") and plan_name.strip():
         if "unified_result" in st.session_state:
-            result_message = save_production_plan_to_bigquery(plan_name, st.session_state.unified_result)
+            result_message = save_production_plan_to_bigquery(plan_name, st.session_state.unified_result, tenant_option)
             st.success(result_message)
         else:
             st.error("No unified result to save. Please run the forecast first.")
