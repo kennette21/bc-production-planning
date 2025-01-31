@@ -38,18 +38,9 @@ def default_farm_config(tenant: str):
             "FS_MORTALITY_STD": 0.05,
         }
 
-def combine_and_style_compliance_table(plan, actual):
+def style_compliance_table(combined):
 
-    compare_fields = ['BS','MF','FS','OP']
 
-    actual.rename(columns={col: f"{col}_Actual" for col in compare_fields}, inplace=True)
-    plan.rename(columns={col: f"{col}_Plan" for col in compare_fields}, inplace=True)
-
-    combined = pd.merge(actual, plan, on=['Day', 'Species',], how='outer')
-    combined = combined[["Type","Date","Species","BS_Actual","BS_Plan","MF_Actual","MF_Plan","FS_Actual","FS_Plan","OP_Actual","OP_Plan"]]
-
-    import pdb
-    pdb.set_trace()
     def style_cells(row, col_name):
         if "_Actual" in col_name:
             plan_col = col_name.replace("_Actual", "_Plan")

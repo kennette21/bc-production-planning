@@ -5,15 +5,12 @@ from modules.bigquery_util import (
     load_saved_plan_names,
     load_historical_fin_from_bigquery
 )
-from modules.utils import combine_and_style_compliance_table, generate_mock_compliance_data
+from modules.utils import style_compliance_table, generate_mock_compliance_data
 
 def compliance_page():
     st.title("Compliance and Performance Analysis")
 
     st.sidebar.markdown("Analyze farm performance against production plans.")
-
-    # todo: fetch prod plan fin from this tab
-    # todo: get historical fin from date in prod plan fin
 
     # Fetch available production plans
     plan_names = load_saved_plan_names()
@@ -38,37 +35,49 @@ def compliance_page():
             st.error("Error loading data from BigQuery.")
             return
 
-        # Filter for species additions only
+        # Production Plan #
+        # Filter for species additions only and relevant fields
         species_additions_plan = prod_plan[prod_plan["Type"] == "species-additions"]
-        species_additions_plan = species_additions_plan.drop(columns=["PlanName", "SavedAt", "SF", "tenant"], errors="ignore")
-        species_additions_plan = species_additions_plan.sort_values(by=["Day"], ascending=True)
+        species_additions_plan['Date'] = species_additions_plan['StartedAt'] + pd.to_timedelta(species_additions_plan['Day'], unit='D')
+        species_additions_plan["Date"] = pd.to_datetime(species_additions_plan["Date"]).dt.strftime("%Y-%m-%d")
+        species_additions_plan = species_additions_plan.drop(columns=["PlanName", "StartedAt", "SavedAt",  "SF", "tenant"], errors="ignore")
 
-        # Drop unnecessary columns from historical_fin
+        # Historical FIN #
+        # Filter for species additions only and relevant fields
         species_additions_actual = historical_fin[historical_fin["Type"] == "species-additions"]
         species_additions_actual = species_additions_actual.drop(columns=["Type","PlanName", "SF", "tenant"], errors="ignore")
+        species_additions_actual["Date"] = pd.to_datetime(species_additions_actual["Date"]).dt.strftime("%Y-%m-%d")
 
         # Assign a sequential day index per species-tenant group
-        species_additions_actual = species_additions_actual.sort_values(by=['Date','Species'])
-        species_additions_actual['Day'] = species_additions_actual.groupby(['Date','Species']).cumcount()
+        # species_additions_actual = species_additions_actual.sort_values(by=['Date','Species'])
+        # species_additions_actual['Day'] = species_additions_actual.groupby(['Date','Species']).cumcount()
+
+        # Combine plan and actual tables
+        compare_fields = ['BS','MF','FS','OP']
+        species_additions_actual.rename(columns={col: f"{col}_Actual" for col in compare_fields}, inplace=True)
+        species_additions_plan.rename(columns={col: f"{col}_Plan" for col in compare_fields}, inplace=True)
+
+        
+        compliance_table = pd.merge(species_additions_actual, species_additions_plan, on=['Date', 'Species',], how='outer')
+        compliance_table = compliance_table[["Type","Date","Species","BS_Actual","BS_Plan","MF_Actual","MF_Plan","FS_Actual","FS_Plan","OP_Actual","OP_Plan"]]
 
         # Fill NaN values with 0 before converting to integers
-        species_additions_plan = species_additions_plan.fillna(0)
-        species_additions_actual = species_additions_actual.fillna(0)
+        compliance_table = compliance_table.fillna(0)
 
+        # Drop rows where all 8 fields are empty or NaN
+        compliance_table = compliance_table[
+            ~compliance_table[["BS_Actual", "BS_Plan", "MF_Actual", "MF_Plan", "FS_Actual", "FS_Plan", "OP_Actual", "OP_Plan"]]
+            .eq(0).all(axis=1)
+]
         # Ensure numeric columns are integers
-        numeric_columns = species_additions_plan.select_dtypes(include=["float", "int"]).columns
-        species_additions_plan[numeric_columns] = species_additions_plan[numeric_columns].astype(int)
+        numeric_columns = compliance_table.select_dtypes(include=["float", "int"]).columns
+        compliance_table[numeric_columns] = compliance_table[numeric_columns].astype(int)
 
-        numeric_columns_hist = species_additions_actual.select_dtypes(include=["float", "int"]).columns
-        species_additions_actual[numeric_columns_hist] = species_additions_actual[numeric_columns_hist].astype(int)
+        # Sort Day and Species in ascending  order
+        compliance_table = compliance_table.sort_values(by=["Date","Species"], ascending=True)
 
-        # Sort both tables by Day in ascending order
-        species_additions_plan = species_additions_plan.sort_values(by=["Day"], ascending=True)
-        species_additions_actual = species_additions_actual.sort_values(by=["Day"], ascending=True)
-
-        # Combine and style compliance table(styled_compliance_table, height=400)
-        styled_compliance_table = combine_and_style_compliance_table(species_additions_plan, species_additions_actual)
-
+        # Style compliance table(styled_compliance_table, height=400)
+        styled_compliance_table = style_compliance_table(compliance_table)
 
         st.subheader("Weekly Compliance Analysis")
-        st.dataframe(styled_compliance_table, height=400)
+        st.dataframe(styled_compliance_table, height=600, width= 200)
