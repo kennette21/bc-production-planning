@@ -19,7 +19,7 @@ BS_MORTALITY_STD = 0.05
 MF_MORTALITY_STD = 0.1
 FS_MORTALITY_STD = 0.05
 
-def save_production_plan_to_bigquery(plan_name, unified_result, tenant: str):
+def save_production_plan_to_bigquery(plan_name, unified_result, tenant: str, selected_date: str):
     """
     Save the unified production plan (unified_result) to BigQuery in a unified table.
 
@@ -62,6 +62,7 @@ def save_production_plan_to_bigquery(plan_name, unified_result, tenant: str):
     # Add metadata
     combined_data["PlanName"] = plan_name
     combined_data["SavedAt"] = pd.Timestamp.now()
+    combined_data["StartedAt"] = pd.Timestamp(selected_date)
 
     # Save to BigQuery
     table_id = "brain-coral.prod_planning_mvp.production_plans"
@@ -71,8 +72,6 @@ def save_production_plan_to_bigquery(plan_name, unified_result, tenant: str):
     except Exception as e:
         return f"Error saving production plan '{plan_name}': {e}"
     
-def load_historical_fin_from_bigquery(date: str):
-    return "";
 
 def load_saved_plan_names():
     """
@@ -94,55 +93,31 @@ def load_production_plan_from_bigquery(plan_name: str) -> pd.DataFrame:
     """
     return execute_query(query)
 
-def load_historical_fin_from_bigquery(saved_date: str) -> pd.DataFrame:
+def load_historical_fin_from_bigquery(saved_date: str, tenant: str) -> pd.DataFrame:
     """
     Fetch historical FIN (farm inventory numbers) from BigQuery based on the saved production plan date.
     """
     query = f"""
-        WITH blank_table as (
-            SELECT
-                DISTINCT
-                transition_date,
-                slug,
-                tenant
-            FROM (
-                SELECT transition_date, slug, tenant FROM `brain-coral.prod_planning_mvp.daily_totals_bs`
-                UNION ALL
-                SELECT transition_date, slug, tenant FROM `brain-coral.prod_planning_mvp.daily_totals_mf`
-                UNION ALL
-                SELECT transition_date, slug, tenant FROM `brain-coral.prod_planning_mvp.daily_totals_fs`
-            )
-        ),
-        species_layer as (
-            SELECT
-                NULL as PlanName,
-                NULL as SavedAt,
-                0 as Day,
-                "species" as Type,
-                bs.current_quantity as BS,
-                mf.current_quantity as MF,
-                fs.current_fs_plug as FS,
-                fs.outplant_fs_plug as OP,
-                NULL as SF,
-                blank.tenant as tenant
-            FROM blank_table as blank
-            LEFT JOIN `brain-coral.prod_planning_mvp.daily_totals_bs` as bs ON
-                blank.transition_date = bs.transition_date AND
-                blank.slug = bs.slug AND
-                blank.tenant = bs.tenant
-            LEFT JOIN `brain-coral.prod_planning_mvp.daily_totals_mf` as mf ON
-                blank.transition_date = mf.transition_date AND
-                blank.slug = mf.slug AND
-                blank.tenant = mf.tenant
-            LEFT JOIN `brain-coral.prod_planning_mvp.daily_totals_fs` as fs ON
-                blank.transition_date = fs.transition_date AND
-                blank.slug = fs.slug AND
-                blank.tenant = fs.tenant
-        )
-        SELECT * FROM species_layer
+    SELECT * 
+    FROM 
+        `brain-coral.prod_planning_mvp.daily_totals_all` 
+    WHERE 
+        tenant = CONCAT("tenants/","{tenant}") AND 
+        Date >= "{saved_date}";
     """
-    return execute_query(query)
+    df = execute_query(query)
 
+    # Check plan data quality
+    assert df[['Type','Date','Species','tenant']].notna().all().all()
+    assert len(df[['Type','Date','Species','tenant']].drop_duplicates()) == len(df)
+
+    # Fix date
+    df["new_Date"] = pd.to_datetime(df['Date'], format='%Y-%m-%d', errors='coerce')
+
+    # Drop the original 'Date' column and rename 'new_Date' to 'Date'
+    df.drop(columns=["Date"], errors="ignore", inplace=True)
+    df.rename(columns={"new_Date": "Date"}, inplace=True)
+    return df
 
 def row_to_batch(row: dict) -> Batch:
     """
