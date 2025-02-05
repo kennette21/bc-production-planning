@@ -55,7 +55,9 @@ class Farm:
         self.capacity = tank_capacity * tank_num
         self.stage_capacities = stage_capacities
         self.production_order = production_order
-        self.species_set = {batch.species for batch in inventory}
+        self.forecast_species_set = {batch.species for batch in inventory}
+        self.complete_species_set = self.forecast_species_set.union({key for key in production_order.keys()})
+
 
     def check_capacity(self, stage_capacities, batch=None):
         if batch is None:
@@ -82,7 +84,7 @@ class Farm:
                 max_shortfall_share = shortfall_share
                 max_species = species
 
-        return max_species or random.choice(list(self.species_set))
+        return max_species or random.choice(list(self.complete_species_set))
 
     def forecast(self, days, production_order, desired_output):
         rolling_inventory = []
@@ -90,7 +92,7 @@ class Farm:
         rolling_changes = []
         rolling_capacity = []
         totals_zero = {"BS": 0, "MF": 0, "FS": 0, "OP": 0, "SF": 0}
-        totals_zero_species = {spec: totals_zero.copy() for spec in self.species_set}
+        totals_zero_species = {spec: totals_zero.copy() for spec in self.forecast_species_set}
 
         for day in range(days):
             cur_inventory = {}  # Track batch-specific details
@@ -125,7 +127,7 @@ class Farm:
 
             # Calculate shortfall and available capacity
             cur_totals["SF"] = desired_output - cur_totals["OP"]
-            for species in self.species_set:
+            for species in self.forecast_species_set:
                 if species in production_order:
                     cur_totals_species[species]["SF"] = (
                         production_order[species] - cur_totals_species[species]["OP"]
@@ -177,11 +179,11 @@ class Farm:
             blank_totals = {"BS": 0, "MF": 0, "FS": 0, "OP": 0}
             hypothetical_changes = blank_totals.copy()
             hypothetical_changes_species = {
-                spec: blank_totals.copy() for spec in self.species_set
+                spec: blank_totals.copy() for spec in self.complete_species_set
             }
             hypothetical_totals = blank_totals.copy()
             hypothetical_totals_species = {
-                spec: blank_totals.copy() for spec in self.species_set
+                spec: blank_totals.copy() for spec in self.complete_species_set
             }
             stage_capacity_remaining = forecasted_capacity[day]["stage"]
 

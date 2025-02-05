@@ -101,7 +101,7 @@ def forecast_page():
                 except Exception as e:
                     st.sidebar.error(f"Error fetching data: {e}")
     else:
-        for i in range(5):
+        for i in range(0):
             species = list(default_production_order(tenant_option).keys())[i % 5]
             batches_list.append(Batch(batch_id=f"TEST-{i}", species=species, quantity=100, stage="BS", start_date=0))
 
@@ -118,7 +118,7 @@ def forecast_page():
         # Forecast and Hypothetical Planning
         forecast_result = my_farm.forecast(forecast_days, production_order, sum(production_order.values()))
         final_shortfall_species = {
-            spec: forecast_result[1][-1]["species"].get(spec, {}).get("SF", 0)
+            spec: forecast_result[1][-1]["species"].get(spec, {}).get("SF",  production_order[spec])
             for spec in production_order.keys()
         }
         hypothetical_result = my_farm.plan_future(forecast_days, final_shortfall_species, forecast_result[3])        

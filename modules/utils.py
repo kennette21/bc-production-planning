@@ -4,10 +4,12 @@ import random
 # Helper functions to initialize default parameters
 def default_production_order(tenant: str):
     if (tenant == 'saudi'):
-        return {'AARA': 30000, 'PVER': 30000, 'ACYT': 10000, 'PNOD': 5000, 'ADIG': 500}
+        # return {"APHA": 4200, "LOBX": 2100, "AAUS": 2100, "AVAR": 4200, "MMAA": 4200, "DIPX": 2100, "ADIG": 4200, "MELE": 2100, "MONX": 2100, "ACYT": 4200, "AHEM": 6300, "ELAM": 4200, "ASQU": 4200, "PMAL": 4200, "SPIS": 4200, "AARA": 4200, "TREN": 2100, "PVER": 2100 }
+        return {"APHA": 4200, "PMAL": 4200}
+
     else:
         return {'PAST': 7000, 'APAL': 6000, 'APRO': 6000, 'PCLI': 3000, 'ACER': 5000}
-
+                
 def default_farm_config(tenant: str):
     if (tenant == 'saudi'):
          return {
