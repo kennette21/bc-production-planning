@@ -1,6 +1,7 @@
 import copy
 import random
 from datetime import date
+import pdb
 
 class Batch:
     def __init__(self, batch_id, species, quantity, stage, start_date, bs_cycle_days=28, mf_cycle_days=30, fs_cycle_days=90, bs_mortality_std=0.05, mf_mortality_std=0.1, fs_mortality_std=0.05):
@@ -50,16 +51,17 @@ class Batch:
 
 
 class Farm:
-    def __init__(self, inventory, tank_capacity, tank_num, stage_capacities, production_order):
+    def __init__(self, inventory, prod_tank_capacity, prod_tank_num, bs_tank_capacity, bs_tank_num, stage_capacities, production_order):
         self.inventory = inventory
-        self.capacity = tank_capacity * tank_num
+        self.prod_capacity = prod_tank_capacity * prod_tank_num
+        self.bs_capacity = bs_tank_capacity * bs_tank_num
         self.stage_capacities = stage_capacities
         self.production_order = production_order
         self.forecast_species_set = {batch.species for batch in inventory}
         self.complete_species_set = self.forecast_species_set.union({key for key in production_order.keys()})
 
 
-    def check_capacity(self, stage_capacities, batch=None):
+    def check_stage_capacity(self, stage_capacities, batch=None):
         if batch is None:
             return stage_capacities["BS"] > 0
         elif batch.stage == "BS":
@@ -70,6 +72,16 @@ class Farm:
             return stage_capacities["OP"] >= batch.quantity
         return False
 
+    def check_prod_capacity(self, prod_capacity_remaining, batch):
+        """ Checks if it is possible for BS -> MF capacity """
+
+        if batch.stage == "BS" and prod_capacity_remaining < batch.quantity:
+            return False
+        elif batch.stage == "BS" and prod_capacity_remaining >= batch.quantity:
+            return True
+        else:
+            return True
+        
     def create_batch(self, day, species, quantity_ceiling):
         batch_id = f"TEST-{random.randint(1, 10000)}"
         batch_quantity = min(quantity_ceiling, 100)
@@ -105,7 +117,7 @@ class Farm:
             # Simulate transitions for each batch
             for batch in self.inventory:
                 is_ready = batch.is_ready_to_transition(day)
-                stage_capacity_exists = self.check_capacity(stage_capacity_remaining, batch)
+                stage_capacity_exists = self.check_stage_capacity(stage_capacity_remaining, batch)
 
                 if is_ready and stage_capacity_exists:
                     batch.change_stage(day)
@@ -133,21 +145,25 @@ class Farm:
                         production_order[species] - cur_totals_species[species]["OP"]
                     )
 
-            cur_avail_capacity = (
-                self.capacity - cur_totals["BS"] - cur_totals["MF"] - cur_totals["FS"]
+            cur_avail_prod_capacity = (
+                self.prod_capacity - cur_totals["MF"] - cur_totals["FS"]
+            )
+            cur_avail_bs_capacity = (
+                self.bs_capacity - cur_totals["BS"]
             )
 
             # Add current totals to rolling lists
             rolling_inventory.append(cur_inventory)
             rolling_totals.append({"overall": cur_totals, "species": cur_totals_species})
             rolling_changes.append({"overall": forecast_changes, "species": forecast_changes_species})
-            rolling_capacity.append({"overall": cur_avail_capacity, "stage": stage_capacity_remaining})
+            rolling_capacity.append({"prod": cur_avail_prod_capacity, "broodstock": cur_avail_bs_capacity, "stage": stage_capacity_remaining})
 
-            # # Debugging Logs (optional)
+            # Debugging Logs (optional)
             # print(f"Day: {day}")
             # print("Current Totals:", cur_totals)
             # print("Current Totals by Species:", cur_totals_species)
-            # print("Overall Capacity Remaining:", cur_avail_capacity)
+            # print("Prod Capacity Remaining:", cur_avail_prod_capacity)
+            # print("Broodstock Capacity Remaining:", cur_avail_prod_capacity)
             # print("Stage Capacity Remaining:", stage_capacity_remaining)
             # print("")
 
@@ -166,13 +182,18 @@ class Farm:
 
             # Calculate the capacity remaining for the day
             if day == 0:
-                farm_capacity_remaining = forecasted_capacity[0]["overall"]
+                prod_capacity_remaining = forecasted_capacity[0]["prod"]
+                bs_capacity_remaining = forecasted_capacity[0]["broodstock"]
+
             else:
-                farm_capacity_remaining = (
-                    forecasted_capacity[day]["overall"]
-                    - hypothetical_totals["BS"]
+                prod_capacity_remaining = (
+                    forecasted_capacity[day]["prod"]
                     - hypothetical_totals["MF"]
                     - hypothetical_totals["FS"]
+                )
+                bs_capacity_remaining = (
+                    forecasted_capacity[day]["broodstock"]
+                    - hypothetical_totals["BS"]
                 )
 
             # Initialize blank values for the day
@@ -191,21 +212,21 @@ class Farm:
             while (
                 shortfall > 0
                 and stage_capacity_remaining["BS"] > 0
-                and farm_capacity_remaining > 0
+                and bs_capacity_remaining > 0
             ):
                 # Decide the quantity and species
                 quantity_ceiling = min(
-                    shortfall, stage_capacity_remaining["BS"], farm_capacity_remaining
+                    shortfall, stage_capacity_remaining["BS"], bs_capacity_remaining
                 )
                 new_species = self.choose_species(species_shortfall)
 
-                # Create new batch
+                # Create new broodstock batch
                 new_batch = self.create_batch(day, new_species, quantity_ceiling)
                 hypothetical_inventory.append(new_batch)
 
                 # Reduce capacity and shortfall
                 stage_capacity_remaining["BS"] -= new_batch.quantity
-                farm_capacity_remaining -= new_batch.quantity
+                bs_capacity_remaining -= new_batch.quantity
                 shortfall -= new_batch.quantity
                 species_shortfall[new_batch.species] -= new_batch.quantity
 
@@ -217,11 +238,13 @@ class Farm:
 
             # Simulate quantity and transition to the next day for each batch
             for batch in hypothetical_inventory:
-                is_ready = batch.is_ready_to_transition(day)
-                stage_capacity_exists = self.check_capacity(stage_capacity_remaining, batch)
+                batch_is_ready = batch.is_ready_to_transition(day)
+                stage_capacity_exists = self.check_stage_capacity(stage_capacity_remaining, batch)
+                prod_capaciy_exists = self.check_prod_capacity(prod_capacity_remaining, batch) # This only checks for BS -> MF capacity 
 
+                # only when it is a BS to MF do we need to check if there is prod capacity.
                 # Transition batch if ready and capacity exists
-                if is_ready and stage_capacity_exists:
+                if batch_is_ready and stage_capacity_exists and prod_capaciy_exists:
                     batch.change_stage(day)
 
                     stage_capacity_remaining[batch.stage] -= batch.quantity
@@ -245,7 +268,7 @@ class Farm:
                 {"overall": hypothetical_totals, "species": hypothetical_totals_species}
             )
             hypothetical_rolling_capacity.append(
-                {"overall": farm_capacity_remaining, "stage": stage_capacity_remaining}
+                {"prod": prod_capacity_remaining, "broodstock": bs_capacity_remaining, "stage": stage_capacity_remaining}
             )
             hypothetical_rolling_changes.append(
                 {"overall": hypothetical_changes, "species": hypothetical_changes_species}
