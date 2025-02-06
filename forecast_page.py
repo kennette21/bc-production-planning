@@ -109,8 +109,10 @@ def forecast_page():
     if st.button("🚀 Run Forecast and Planning"):
         my_farm = Farm(
             inventory=batches_list,
-            tank_capacity=farm_config["TANK_CAPACITY"],
-            tank_num=farm_config["NUM_PROD_TANKS"],
+            prod_tank_capacity=farm_config["PROD_TANK_CAPACITY"],
+            prod_tank_num=farm_config["NUM_PROD_TANKS"],
+            bs_tank_capacity=farm_config["BS_TANK_CAPACITY"],
+            bs_tank_num=farm_config["NUM_BS_TANKS"],
             stage_capacities=farm_config["STAGE_CAPACITIES"],
             production_order=production_order,
         )
@@ -153,12 +155,18 @@ def forecast_page():
         st.bar_chart(weekly_changes[["BS", "MF", "FS", "OP"]])
 
         # Weekly Production Changes for Overall Plan
-        st.subheader("Production Plan Farm Capacity Occupied")
-        unified_capacity = pd.DataFrame([(farm_config["TANK_CAPACITY"] * farm_config["NUM_PROD_TANKS"]) - total["overall"] for total in unified_result[3]])
-        unified_capacity["Week"] = unified_capacity.index // 7
-        weekly_capacity_avail = unified_capacity.groupby("Week").max()
-        st.bar_chart(weekly_capacity_avail)
+        st.subheader("Production Plan Capacity Occupied (Production Tanks)")
+        unified_prod_capacity = pd.DataFrame([(farm_config["PROD_TANK_CAPACITY"] * farm_config["NUM_PROD_TANKS"]) - total["prod"] for total in unified_result[3]])
+        unified_prod_capacity["Week"] = unified_prod_capacity.index // 7
+        weekly_prod_capacity_avail = unified_prod_capacity.groupby("Week").max()
+        st.bar_chart(weekly_prod_capacity_avail)
 
+        st.subheader("Production Plan Capacity Occupied (Broodstock Tanks)")
+        unified_bs_capacity = pd.DataFrame([(farm_config["BS_TANK_CAPACITY"] * farm_config["NUM_BS_TANKS"]) - total["broodstock"] for total in unified_result[3]])
+        unified_bs_capacity["Week"] = unified_bs_capacity.index // 7
+        weekly_bs_capacity_avail = unified_bs_capacity.groupby("Week").max()
+        st.bar_chart(weekly_bs_capacity_avail)
+    
         st.table(unified_totals)
 
     # Save Unified Plan
