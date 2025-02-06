@@ -51,7 +51,7 @@ class Batch:
 
 
 class Farm:
-    def __init__(self, inventory, prod_tank_capacity, prod_tank_num, bs_tank_capacity, bs_tank_num, stage_capacities, production_order):
+    def __init__(self, inventory, prod_tank_capacity, prod_tank_num, bs_tank_capacity, bs_tank_num, stage_capacities, production_order, no_outplant_window_start= None, no_outplant_window_end= None ):
         self.inventory = inventory
         self.prod_capacity = prod_tank_capacity * prod_tank_num
         self.bs_capacity = bs_tank_capacity * bs_tank_num
@@ -59,7 +59,8 @@ class Farm:
         self.production_order = production_order
         self.forecast_species_set = {batch.species for batch in inventory}
         self.complete_species_set = self.forecast_species_set.union({key for key in production_order.keys()})
-
+        self.no_outplant_window_start = no_outplant_window_start
+        self.no_outplant_window_end = no_outplant_window_end
 
     def check_stage_capacity(self, stage_capacities, batch=None):
         if batch is None:
@@ -72,8 +73,10 @@ class Farm:
             return stage_capacities["OP"] >= batch.quantity
         return False
 
-    def check_prod_capacity(self, prod_capacity_remaining, batch):
-        """ Checks if it is possible for BS -> MF capacity """
+    def check_prod_capacity(self,  prod_capacity_remaining, batch):
+        """ 
+        Check if it is possible for BS -> MF capacity OR
+        """
 
         if batch.stage == "BS" and prod_capacity_remaining < batch.quantity:
             return False
@@ -180,6 +183,11 @@ class Farm:
         for day in range(days):
             cur_inventory = {}
 
+            if self.no_outplant_window_start is not None and self.no_outplant_window_end is not None:
+                in_outplant_window = self.no_outplant_window_start <= day <= self.no_outplant_window_end
+            else:
+                in_outplant_window = False 
+
             # Calculate the capacity remaining for the day
             if day == 0:
                 prod_capacity_remaining = forecasted_capacity[0]["prod"]
@@ -240,11 +248,17 @@ class Farm:
             for batch in hypothetical_inventory:
                 batch_is_ready = batch.is_ready_to_transition(day)
                 stage_capacity_exists = self.check_stage_capacity(stage_capacity_remaining, batch)
-                prod_capaciy_exists = self.check_prod_capacity(prod_capacity_remaining, batch) # This only checks for BS -> MF capacity 
+                
+                stage_specific_conditions = {
+                    "BS": self.check_prod_capacity(prod_capacity_remaining, batch),  # BS -> MF (dependent on prod tank capacity)
+                    "FS": not in_outplant_window,  # FS -> OP (dependent on outplant window)
+                }
+
+                no_stage_specific_restrictions = stage_specific_conditions.get(batch.stage, True)  # Default to True for other stages
 
                 # only when it is a BS to MF do we need to check if there is prod capacity.
                 # Transition batch if ready and capacity exists
-                if batch_is_ready and stage_capacity_exists and prod_capaciy_exists:
+                if batch_is_ready and stage_capacity_exists and no_stage_specific_restrictions:
                     batch.change_stage(day)
 
                     stage_capacity_remaining[batch.stage] -= batch.quantity

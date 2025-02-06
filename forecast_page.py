@@ -83,7 +83,8 @@ def forecast_page():
 
         # Ensure user makes a choice before running queries
         if date_option == "Current Date":
-            selected_date = datetime.now().strftime("%Y-%m-%d")
+            selected_datetime = datetime.now().date()
+            selected_date = selected_datetime.strftime("%Y-%m-%d")
             try:
                 df_batches = current_data(tenant_option)  # Fetch current data
                 batches_list = [row_to_batch(row) for _, row in df_batches.iterrows()]
@@ -92,7 +93,8 @@ def forecast_page():
                 st.sidebar.error(f"Error fetching data: {e}")
 
         elif date_option == "Enter a Specific Date":
-            selected_date = st.sidebar.text_input("Enter date (YYYY-MM-DD)")
+            selected_datetime = st.sidebar.date_input("Start Date of Production Plan", datetime.now())
+            selected_date = selected_datetime.strftime("%Y-%m-%d")
             if selected_date:  # Ensure a date is entered before fetching
                 try:
                     df_batches = historical_data(selected_date, tenant_option)  # Fetch historical data
@@ -101,9 +103,22 @@ def forecast_page():
                 except Exception as e:
                     st.sidebar.error(f"Error fetching data: {e}")
     else:
+        selected_datetime = datetime.now().date()
         for i in range(0):
             species = list(default_production_order(tenant_option).keys())[i % 5]
             batches_list.append(Batch(batch_id=f"TEST-{i}", species=species, quantity=100, stage="BS", start_date=0))
+
+    # No Outplant start and end
+    no_outplant_start_date = st.sidebar.date_input("Start Date of \"No Outplant Period\"", datetime.now())
+    no_outplant_end_date = st.sidebar.date_input("End Date of \"No Outplant Period\"", datetime.now())
+
+    # Ensure valid date range
+    if no_outplant_start_date > no_outplant_end_date:
+        st.sidebar.error("⚠️ End date of no outplant period must be after start date!")
+
+    # Calculate the difference in days
+    no_outplant_start_day = (no_outplant_start_date - selected_datetime).days
+    no_outplant_end_day = (no_outplant_end_date - selected_datetime).days
 
     # Run Forecast and Planning
     if st.button("🚀 Run Forecast and Planning"):
@@ -115,7 +130,19 @@ def forecast_page():
             bs_tank_num=farm_config["NUM_BS_TANKS"],
             stage_capacities=farm_config["STAGE_CAPACITIES"],
             production_order=production_order,
+            no_outplant_window_start = no_outplant_start_day,
+            no_outplant_window_end = no_outplant_end_day
         )
+
+        # Banner message
+        banner_message = f"""
+        ### No Outplant Period
+        - **Start Date:** {no_outplant_start_date} (Day:{no_outplant_start_day} )
+        - **End Date:** {no_outplant_end_date} (Day: {no_outplant_end_day})
+        """
+
+        # Show the banner at the top of the page
+        st.markdown(banner_message)
 
         # Forecast and Hypothetical Planning
         forecast_result = my_farm.forecast(forecast_days, production_order, sum(production_order.values()))
