@@ -4,15 +4,19 @@ import random
 # Helper functions to initialize default parameters
 def default_production_order(tenant: str):
     if (tenant == 'saudi'):
-        return {'AARA': 30000, 'PVER': 30000, 'ACYT': 10000, 'PNOD': 5000, 'ADIG': 500}
+        # return {"APHA": 4200, "LOBX": 2100, "AAUS": 2100, "AVAR": 4200, "MMAA": 4200, "DIPX": 2100, "ADIG": 4200, "MELE": 2100, "MONX": 2100, "ACYT": 4200, "AHEM": 6300, "ELAM": 4200, "ASQU": 4200, "PMAL": 4200, "SPIS": 4200, "AARA": 4200, "TREN": 2100, "PVER": 2100 }
+        return {"APHA": 42000, "PMAL": 4200}
+
     else:
         return {'PAST': 7000, 'APAL': 6000, 'APRO': 6000, 'PCLI': 3000, 'ACER': 5000}
-
+                
 def default_farm_config(tenant: str):
     if (tenant == 'saudi'):
          return {
-        "NUM_PROD_TANKS": 32,
-        "TANK_CAPACITY": 2100,
+        "NUM_PROD_TANKS": 28,
+        "PROD_TANK_CAPACITY": 2100,
+        "NUM_BS_TANKS": 4,
+        "BS_TANK_CAPACITY": 5000,
         "STAGE_CAPACITIES": {"BS": 1000, "MF": 300, "FS": 300, "OP": 1000},
         "DEFAULT_BS_QUANTITY": 100,
         "MAX_BATCH_QUANTITY": 100,
@@ -25,8 +29,10 @@ def default_farm_config(tenant: str):
     }   
     else: 
         return {
-            "NUM_PROD_TANKS": 27,
-            "TANK_CAPACITY": 1000,
+            "NUM_PROD_TANKS": 25,
+            "PROD_TANK_CAPACITY": 1000,
+            "NUM_BS_TANKS": 2,
+            "BS_TANK_CAPACITY": 3000,
             "STAGE_CAPACITIES": {"BS": 1000, "MF": 300, "FS": 300, "OP": 1000},
             "DEFAULT_BS_QUANTITY": 100,
             "MAX_BATCH_QUANTITY": 100,

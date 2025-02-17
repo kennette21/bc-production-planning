@@ -1,15 +1,7 @@
-from google.cloud import bigquery
 import streamlit as st
-from google.oauth2 import service_account
 import pandas as pd
 from modules.farm import Batch
 from datetime import date
-
-# Create API client.
-credentials = service_account.Credentials.from_service_account_info(
-    st.secrets["gcp_service_account"]
-)
-client = bigquery.Client(credentials=credentials)
 
 # Default values for Batch initialization (align with your app's config)
 DEFAULT_BS_QUANTITY = 100
@@ -19,7 +11,7 @@ BS_MORTALITY_STD = 0.05
 MF_MORTALITY_STD = 0.1
 FS_MORTALITY_STD = 0.05
 
-def save_production_plan_to_bigquery(plan_name, unified_result, tenant: str, selected_date: str):
+def save_production_plan_to_bigquery(credentials, plan_name, unified_result, tenant: str, selected_date: str):
     """
     Save the unified production plan (unified_result) to BigQuery in a unified table.
 
@@ -73,7 +65,7 @@ def save_production_plan_to_bigquery(plan_name, unified_result, tenant: str, sel
         return f"Error saving production plan '{plan_name}': {e}"
     
 
-def load_saved_plan_names():
+def load_saved_plan_names(client):
     """
     Fetch all unique plan names from the production plans table.
     """
@@ -82,7 +74,7 @@ def load_saved_plan_names():
     """
     return client.query(query).to_dataframe()["PlanName"].tolist()
 
-def load_production_plan_from_bigquery(plan_name: str) -> pd.DataFrame:
+def load_production_plan_from_bigquery(client, plan_name: str) -> pd.DataFrame:
     """
     Fetch a locked production plan from BigQuery based on its name.
     """
@@ -91,9 +83,9 @@ def load_production_plan_from_bigquery(plan_name: str) -> pd.DataFrame:
         FROM `brain-coral.prod_planning_mvp.production_plans`
         WHERE PlanName = '{plan_name}'
     """
-    return execute_query(query)
+    return execute_query(client, query)
 
-def load_historical_fin_from_bigquery(saved_date: str, tenant: str) -> pd.DataFrame:
+def load_historical_fin_from_bigquery(client, saved_date: str, tenant: str) -> pd.DataFrame:
     """
     Fetch historical FIN (farm inventory numbers) from BigQuery based on the saved production plan date.
     """
@@ -105,7 +97,7 @@ def load_historical_fin_from_bigquery(saved_date: str, tenant: str) -> pd.DataFr
         tenant = CONCAT("tenants/","{tenant}") AND 
         Date >= "{saved_date}";
     """
-    df = execute_query(query)
+    df = execute_query(client, query)
 
     # Check plan data quality
     assert df[['Type','Date','Species','tenant']].notna().all().all()
@@ -172,7 +164,7 @@ def row_to_batch(row: dict) -> Batch:
 
     return new_batch
 
-def execute_query(query: str) -> pd.DataFrame:
+def execute_query(client, query: str) -> pd.DataFrame:
     """
     Execute a given SQL query and return the result as a Pandas DataFrame.
     """
@@ -180,7 +172,7 @@ def execute_query(query: str) -> pd.DataFrame:
     results = query_job.result()  # Waits for query to finish
     return results.to_dataframe()
 
-def current_data(tenant: str) -> pd.DataFrame:
+def current_data(client, tenant: str) -> pd.DataFrame:
     """
     Pull the current data at the farm so that it can be piped into the model.
     Includes outplants in December 2024 for demonstration purposes.
@@ -215,9 +207,9 @@ def current_data(tenant: str) -> pd.DataFrame:
             (CurrentLocationType = 'ex situ') AND 
             CurrentLocationName NOT IN ('Reef Tank', 'Happy Tank', 'Spawning System', 'Tree Tank')
     """
-    return execute_query(QUERY)
+    return execute_query(client, QUERY)
 
-def historical_data(date: str, tenant: str) -> pd.DataFrame:
+def historical_data(client, date: str, tenant: str) -> pd.DataFrame:
     """
     Pull the  data at the farm from a particular date. that it can be piped into the model.
     """
@@ -266,5 +258,5 @@ def historical_data(date: str, tenant: str) -> pd.DataFrame:
     """
 
     # Execute the query and return the resulting DataFrame
-    df = execute_query(QUERY)    
+    df = execute_query(client, QUERY)    
     return df
