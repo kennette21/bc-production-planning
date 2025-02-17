@@ -1,5 +1,7 @@
 import streamlit as st
 import pandas as pd
+from google.cloud import bigquery
+from google.oauth2 import service_account
 from modules.bigquery_util import (
     load_production_plan_from_bigquery,
     load_saved_plan_names,
@@ -7,13 +9,20 @@ from modules.bigquery_util import (
 )
 from modules.utils import style_compliance_table, generate_mock_compliance_data
 
+# Create API client.
+credentials = service_account.Credentials.from_service_account_info(
+    st.secrets["gcp_service_account"]
+)
+bigQclient = bigquery.Client(credentials=credentials)
+
+
 def compliance_page():
     st.title("Compliance and Performance Analysis")
 
     st.sidebar.markdown("Analyze farm performance against production plans.")
 
     # Fetch available production plans
-    plan_names = load_saved_plan_names()
+    plan_names = load_saved_plan_names(bigQclient)
 
     if not plan_names:
         st.error("No saved production plans found.")
@@ -23,13 +32,13 @@ def compliance_page():
 
     if selected_plan:
         # Load selected production plan
-        prod_plan = load_production_plan_from_bigquery(selected_plan)
+        prod_plan = load_production_plan_from_bigquery(bigQclient,selected_plan)
 
         # Get the historical FIN from the date of the saved plan
         started_at = prod_plan["StartedAt"].iloc[0]  # Get the date the plan was saved
         started_at_str = started_at.strftime("%Y-%m-%d")
         tenant = prod_plan["tenant"].iloc[0]  # Get the date the plan was saved
-        historical_fin = load_historical_fin_from_bigquery(started_at_str, tenant)
+        historical_fin = load_historical_fin_from_bigquery(bigQclient, started_at_str, tenant)
 
         if prod_plan.empty or historical_fin.empty:
             st.error("Error loading data from BigQuery.")

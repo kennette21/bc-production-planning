@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 import json
+from google.cloud import bigquery
+from google.oauth2 import service_account
 from datetime import datetime
 from modules.farm import Farm, Batch
 from modules.bigquery_util import current_data, historical_data, row_to_batch, save_production_plan_to_bigquery
@@ -9,6 +11,12 @@ from modules.utils import (
     default_farm_config,
     create_unified_result
 )
+
+# Create API client.
+credentials = service_account.Credentials.from_service_account_info(
+    st.secrets["gcp_service_account"]
+)
+bigQclient = bigquery.Client(credentials=credentials)
 
 def forecast_page():
     st.title("Production Planning")
@@ -86,7 +94,7 @@ def forecast_page():
             selected_datetime = datetime.now().date()
             selected_date = selected_datetime.strftime("%Y-%m-%d")
             try:
-                df_batches = current_data(tenant_option)  # Fetch current data
+                df_batches = current_data(bigQclient, tenant_option)  # Fetch current data
                 batches_list = [row_to_batch(row) for _, row in df_batches.iterrows()]
                 st.sidebar.success("Data fetched successfully!")
             except Exception as e:
@@ -97,7 +105,7 @@ def forecast_page():
             selected_date = selected_datetime.strftime("%Y-%m-%d")
             if selected_date:  # Ensure a date is entered before fetching
                 try:
-                    df_batches = historical_data(selected_date, tenant_option)  # Fetch historical data
+                    df_batches = historical_data(bigQclient, selected_date, tenant_option)  # Fetch historical data
                     batches_list = [row_to_batch(row) for _, row in df_batches.iterrows()]
                     st.sidebar.success("Data fetched successfully!")
                 except Exception as e:
@@ -201,7 +209,7 @@ def forecast_page():
     plan_name = st.text_input("Enter a name for the production plan:", "")
     if st.button("💾 Save Production Plan", key="save_plan_button") and plan_name.strip():
         if "unified_result" in st.session_state:
-            result_message = save_production_plan_to_bigquery(plan_name, st.session_state.unified_result, tenant_option, selected_date)
+            result_message = save_production_plan_to_bigquery(credentials, plan_name, st.session_state.unified_result, tenant_option, selected_date)
             st.success(result_message)
         else:
             st.error("No unified result to save. Please run the forecast first.")
