@@ -1,4 +1,3 @@
-import streamlit as st
 import pandas as pd
 from modules.farm import Batch
 from datetime import date
